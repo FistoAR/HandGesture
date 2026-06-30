@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Isolated Part Gesture Test</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #ffffff; }
+
+    #hero-canvas {
+      position: fixed; inset: 0;
+      width: 100% !important; height: 100% !important;
+      display: block; z-index: 1;
+    }
+
+    #hints { display: none !important;
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; z-index: 10; pointer-events: none;
+      transition: opacity 1.4s; flex-wrap: wrap; justify-content: center;
+      max-width: 90%;
+    }
+    .h-pill {
+      background: rgba(0,0,0,.7); border: 1px solid rgba(255,255,255,.1);
+      backdrop-filter: blur(12px); border-radius: 50px;
+      padding: 6px 14px; display: flex; align-items: center; gap: 6px;
+      font-family: monospace; font-size: 10px; letter-spacing: .1em; color: rgba(255,255,255,.8);
+    }
+
+    #gest-label { display: none !important;
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.8); border: 1px solid rgba(255,255,255,.1);
+      backdrop-filter: blur(16px); border-radius: 100px;
+      padding: 8px 24px; font-family: monospace; font-size: 11px;
+      letter-spacing: .12em; color: rgba(255,255,255,.9); z-index: 10;
+      opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap;
+    }
+    #gest-label.on { opacity: 1; }
+
+    #hand-count {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(12px); border-radius: 50px;
+      padding: 5px 16px; font-family: monospace; font-size: 9px;
+      letter-spacing: .1em; color: rgba(255,255,255,.8); z-index: 10;
+      opacity: 0; transition: opacity .3s; pointer-events: none;
+    }
+    #hand-count.on { opacity: 1; }
+    #hand-count.two { color: rgba(100,200,255,.9); border-color: rgba(100,200,255,.4); }
+
+    /* Hand dots - Left and Right */
+    .hdot {
+      position: fixed; width: 12px; height: 12px; border-radius: 50%;
+      border: 1.5px solid rgba(0,0,0,.55); background: rgba(0,0,0,.12);
+      pointer-events: none; z-index: 20; transform: translate(-50%,-50%); display: none;
+    }
+    .hdot.on { display: block; }
+    .hdot.left { border-color: rgba(255,150,100,.9); background: rgba(255,150,100,.5); }
+    .hdot.right { border-color: rgba(100,200,255,.9); background: rgba(100,200,255,.5); }
+    
+    .hdot.spider {
+      background: rgba(180,80,255,.8);
+      border-color: rgba(180,80,255,1);
+      width: 16px; height: 16px;
+      box-shadow: 0 0 12px rgba(180,80,255,.6);
+    }
+    .hdot.two-hand-active {
+      width: 18px; height: 18px;
+      border-width: 2px;
+      box-shadow: 0 0 15px currentColor;
+    }
+
+    #cam-btn {
+      position: fixed; bottom: 32px; right: 28px; z-index: 10;
+      background: rgba(0,0,0,.85); border: 1px solid rgba(255,255,255,.2);
+      backdrop-filter: blur(12px); border-radius: 50px;
+      padding: 9px 18px; font-family: monospace; font-size: 10px;
+      letter-spacing: .1em; color: rgba(255,255,255,.8); cursor: pointer;
+    }
+
+    #loading {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+      background: #ffffff; transition: opacity .7s;
+    }
+    #loading.gone { opacity: 0; pointer-events: none; }
+    .ring {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 1.5px solid rgba(0,0,0,.1); border-top-color: rgba(0,0,0,.8);
+      animation: spin .85s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #load-txt { font-family: monospace; font-size: 10px; letter-spacing: .14em; color: rgba(0,0,0,.6); }
+
+    #vcam { position: fixed; top:-9999px; left:-9999px; width:320px; height:240px; opacity:0; pointer-events:none; }
+  </style>
+</head>
+<body>
+
+<div id="loading"><div class="ring"></div><div id="load-txt">LOADING…</div></div>
+
+<canvas id="hero-canvas"></canvas>
+
+<!-- Two hand dots -->
+<div id="hdot-left" class="hdot left"></div>
+<div id="hdot-right" class="hdot right"></div>
+
+<div id="gest-label"></div>
+<div id="hand-count">● ONE HAND</div>
+
+<div id="hints">
+  <div class="h-pill">☝️ Move = Pan Part</div>
+  <div class="h-pill">⟷ Both Move = Rotate</div>
+  <div class="h-pill">🕷️ Spider = Rotate</div>
+  <div class="h-pill">✌️ Zoom</div>
+</div>
+
+<video id="vcam" autoplay muted playsinline></video>
+<button id="cam-btn">✦ Hand Control</button>
+
+<script>
+// ─────────────────────────────────────────────
+// RENDERER & SCENE
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('hero-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0xffffff, 1); // White background for isolated mode
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.physicallyCorrectLights = true;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 1000);
+camera.position.set(0, 0, 7);
+
+const isolatedPivot = new THREE.Group();
+const isolatedContainer = new THREE.Group();
+isolatedPivot.add(isolatedContainer);
+scene.add(isolatedPivot);
+
+function onResize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+onResize(); addEventListener('resize', onResize);
+
+const mainLight = new THREE.DirectionalLight(0xffffff, 2);
+mainLight.position.set(5, 10, 7);
+scene.add(mainLight);
+
+const fillLight = new THREE.DirectionalLight(0xa0a0ff, 1);
+fillLight.position.set(-5, 0, -5);
+scene.add(fillLight);
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let selectedPart = null;
+
+// Transform targets
+let tRX = 0, tRY = 0, tZoom = 7;
+let selectedOffset = new THREE.Vector3();
+let selectedEuler = new THREE.Euler();
+let selectedScale = 1;
+
+// ─────────────────────────────────────────────
+// MATERIAL FIX
+// ─────────────────────────────────────────────
+function fixMat(mat) {
+  if (!mat) return;
+  if (mat.emissive) mat.emissive.setScalar(0);
+  mat.emissiveIntensity = 0;
+  mat.side = THREE.FrontSide;
+  if (mat.transparent && mat.opacity >= 0.9) {
+    mat.transparent = false; mat.opacity = 1;
+  }
+  mat.needsUpdate = true;
+}
+function fixMaterials(root) {
+  root.traverse(c => {
+    if (!c.isMesh) return;
+    Array.isArray(c.material) ? c.material.forEach(fixMat) : fixMat(c.material);
+  });
+}
+
+// ─────────────────────────────────────────────
+// MODEL LOAD
+// ─────────────────────────────────────────────
+const loader = new THREE.GLTFLoader();
+
+loader.load('./rotaryValve.gltf', gltf => {
+  const model = gltf.scene;
+  fixMaterials(model);
+
+  const rawBox = new THREE.Box3().setFromObject(model);
+  const rawSize = new THREE.Vector3(); rawBox.getSize(rawSize);
+  const rawCtr = new THREE.Vector3(); rawBox.getCenter(rawCtr);
+
+  const scaleFactor = 3.5 / Math.max(rawSize.x, rawSize.y, rawSize.z);
+  model.scale.setScalar(scaleFactor);
+
+  model.position.set(
+    -rawCtr.x * scaleFactor,
+    -rawCtr.y * scaleFactor,
+    -rawCtr.z * scaleFactor
+  );
+  
+  // Update matrix world to properly extract local transforms
+  model.updateMatrixWorld(true);
+
+  // We only want ONE part to act as our "selected" material part
+  let meshes = [];
+  model.traverse(child => {
+    if (child.isMesh) {
+      meshes.push(child);
+    }
+  });
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const partIndexStr = urlParams.get('part');
+  let partIndex = 0;
+  if (partIndexStr !== null) {
+    partIndex = parseInt(partIndexStr, 10);
+    if (isNaN(partIndex) || partIndex < 0 || partIndex >= meshes.length) {
+      partIndex = 0;
+    }
+  }
+
+  if (meshes.length > 0) {
+    // Pick the selected part from the URL parameter, default to 0
+    const targetMesh = meshes[partIndex]; 
+    
+    // Detach and add to our isolated container
+    targetMesh.parent.remove(targetMesh);
+    isolatedContainer.add(targetMesh);
+
+    // Compute accurate bounding box of just this part to center and scale it
+    const partBox = new THREE.Box3().setFromObject(targetMesh);
+    const partSize = new THREE.Vector3(); partBox.getSize(partSize);
+    const partCenter = new THREE.Vector3(); partBox.getCenter(partCenter);
+
+    // Center it in the view
+    isolatedContainer.position.copy(partCenter).multiplyScalar(-1);
+
+    // Scale it to fit a comfortable viewing size (~3 units max dimension)
+    const maxDim = Math.max(partSize.x, partSize.y, partSize.z);
+    if (maxDim > 0) {
+      isolatedPivot.scale.setScalar(3.0 / maxDim);
+    }
+
+    selectedPart = {
+      mesh: targetMesh,
+      restQuat: targetMesh.quaternion.clone(),
+      restScale: targetMesh.scale.clone()
+    };
+  }
+
+  document.getElementById('loading').classList.add('gone');
+  
+  // Auto-start the hand gesture camera after model loads
+  setTimeout(() => {
+    const btn = document.getElementById('cam-btn');
+    if (btn) btn.click();
+  }, 300);
+
+}, xhr => {
+  const pct = xhr.total ? Math.round(xhr.loaded / xhr.total * 100) : '…';
+  document.getElementById('load-txt').textContent = `LOADING… ${pct}%`;
+}, () => {
+  console.error("Failed to load rotaryValve.gltf");
+  document.getElementById('load-txt').textContent = "ERROR LOADING MODEL";
+});
+
+// ─────────────────────────────────────────────
+// MOUSE / TOUCH / KEYBOARD CONTROLS
+// ─────────────────────────────────────────────
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+let autoRot = true;
+let dragging = false, lx = 0, ly = 0, lPinch = 0;
+
+canvas.addEventListener('mousedown', e => {
+  dragging = true; lx = e.clientX; ly = e.clientY; autoRot = false;
+});
+addEventListener('mouseup', () => dragging = false);
+addEventListener('mousemove', e => {
+  if (!dragging) return;
+  tRY += (e.clientX - lx) * .011;
+  tRX += (e.clientY - ly) * .011;
+  lx = e.clientX; ly = e.clientY;
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  tZoom = clamp(tZoom + e.deltaY * .007, 1.5, 18);
+}, { passive: false });
+
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    dragging = true; autoRot = false;
+    lx = e.touches[0].clientX; ly = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    lPinch = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+  }
+}, { passive: true });
+addEventListener('touchend', () => dragging = false);
+addEventListener('touchmove', e => {
+  if (e.touches.length === 1 && dragging) {
+    tRY += (e.touches[0].clientX - lx) * .011;
+    tRX += (e.touches[0].clientY - ly) * .011;
+    lx = e.touches[0].clientX; ly = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    const d = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    tZoom = clamp(tZoom - (d - lPinch) * .02, 1.5, 18);
+    lPinch = d;
+  }
+}, { passive: true });
+
+
+// ─────────────────────────────────────────────
+// UI ELEMENTS
+// ─────────────────────────────────────────────
+const GL = document.getElementById('gest-label');
+let glT;
+function setLabel(t) {
+  GL.textContent = t;
+  GL.classList.add('on');
+  clearTimeout(glT);
+  glT = setTimeout(() => GL.classList.remove('on'), 2000);
+}
+
+const HDOT_LEFT = document.getElementById('hdot-left');
+const HDOT_RIGHT = document.getElementById('hdot-right');
+const HAND_COUNT = document.getElementById('hand-count');
+
+// Smoothed positions
+let leftPos = { x: innerWidth * 0.3, y: innerHeight / 2 };
+let rightPos = { x: innerWidth * 0.7, y: innerHeight / 2 };
+
+// ─────────────────────────────────────────────
+// RENDER LOOP
+// ─────────────────────────────────────────────
+(function loop() {
+  requestAnimationFrame(loop);
+
+  if (autoRot) {
+    tRY += 0.005;
+  }
+  
+  // Smooth rotations and camera zoom
+  isolatedPivot.rotation.x += (tRX - isolatedPivot.rotation.x) * 0.1;
+  isolatedPivot.rotation.y += (tRY - isolatedPivot.rotation.y) * 0.1;
+  camera.position.z += (tZoom - camera.position.z) * 0.1;
+
+  if (selectedPart) {
+    // Smooth panning (lerp)
+    isolatedPivot.position.lerp(selectedOffset, 0.1);
+    
+    selectedPart.mesh.quaternion.copy(selectedPart.restQuat);
+    selectedPart.mesh.rotateX(selectedEuler.x);
+    selectedPart.mesh.rotateY(selectedEuler.y);
+    selectedPart.mesh.rotateZ(selectedEuler.z);
+    
+    // Smooth scaling
+    if (!selectedPart.currentScale) selectedPart.currentScale = 1;
+    selectedPart.currentScale += (selectedScale - selectedPart.currentScale) * 0.1;
+    selectedPart.mesh.scale.copy(selectedPart.restScale).multiplyScalar(selectedPart.currentScale);
+  }
+
+  renderer.render(scene, camera);
+})();
+
+// ─────────────────────────────────────────────
+// ★★★ GESTURE DETECTION ★★★
+// ─────────────────────────────────────────────
+
+function d2(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// Check if a finger is FULLY extended (straight)
+function isFingerStraight(lm, tipIdx, pipIdx) {
+  return lm[tipIdx].y < lm[pipIdx].y - 0.03;
+}
+// Check if a finger is BENT/CURLED (spider-like)
+function isFingerCurved(lm, tipIdx, dipIdx, pipIdx, mcpIdx) {
+  const tipY = lm[tipIdx].y; const dipY = lm[dipIdx].y;
+  const pipY = lm[pipIdx].y; const mcpY = lm[mcpIdx].y;
+  return (tipY > pipY - 0.04) && (tipY < mcpY + 0.06) && (dipY > pipY - 0.02);
+}
+// Check if fingers are SPREAD apart
+function areFingerSpread(lm) {
+  return d2(lm[8], lm[20]) > d2(lm[5], lm[17]) * 0.6;
+}
+
+function isSpiderHand(lm) {
+  const curvedCount = [
+    isFingerCurved(lm, 8, 7, 6, 5),
+    isFingerCurved(lm, 12, 11, 10, 9),
+    isFingerCurved(lm, 16, 15, 14, 13),
+    isFingerCurved(lm, 20, 19, 18, 17)
+  ].filter(Boolean).length;
+  const thumbOut = lm[4].x < lm[3].x - 0.01 || lm[4].x > lm[3].x + 0.01;
+  return curvedCount >= 3 && areFingerSpread(lm) && thumbOut;
+}
+
+function countStraightFingers(lm) {
+  const tips = [8, 12, 16, 20];
+  const pips = [6, 10, 14, 18];
+  let count = 0;
+  for (let i = 0; i < 4; i++) {
+    if (lm[tips[i]].y < lm[pips[i]].y - 0.025) count++;
+  }
+  return count;
+}
+
+function getPalmCenter(lm) {
+  return {
+    x: (lm[0].x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 5,
+    y: (lm[0].y + lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 5
+  };
+}
+
+// Previous frame data for two-hand tracking
+let prevTwoHandDist = null;
+let prevTwoHandCenter = null;
+let prevTwoHandAngle = null;
+let prevLeftPos = null;
+let prevRightPos = null;
+
+// Single hand state
+let pSpider = null, pZoom = null, pPan = null;
+
+function handleTwoHands(lm1, lm2) {
+  const center1 = getPalmCenter(lm1);
+  const center2 = getPalmCenter(lm2);
+
+  let leftLm, rightLm;
+  if (center1.x > center2.x) { leftLm = lm1; rightLm = lm2; } 
+  else { leftLm = lm2; rightLm = lm1; }
+
+  const leftCenter = getPalmCenter(leftLm);
+  const rightCenter = getPalmCenter(rightLm);
+
+  const screenLeft = { x: (1 - leftCenter.x) * innerWidth, y: leftCenter.y * innerHeight };
+  const screenRight = { x: (1 - rightCenter.x) * innerWidth, y: rightCenter.y * innerHeight };
+
+  leftPos.x += (screenLeft.x - leftPos.x) * 0.3;
+  leftPos.y += (screenLeft.y - leftPos.y) * 0.3;
+  rightPos.x += (screenRight.x - rightPos.x) * 0.3;
+  rightPos.y += (screenRight.y - rightPos.y) * 0.3;
+
+  HDOT_LEFT.classList.add('on', 'two-hand-active');
+  HDOT_RIGHT.classList.add('on', 'two-hand-active');
+  HDOT_LEFT.style.left = leftPos.x + 'px';
+  HDOT_LEFT.style.top = leftPos.y + 'px';
+  HDOT_RIGHT.style.left = rightPos.x + 'px';
+  HDOT_RIGHT.style.top = rightPos.y + 'px';
+
+  HAND_COUNT.classList.add('on', 'two');
+  HAND_COUNT.textContent = '●● TWO HANDS';
+
+  const currentDist = d2(leftCenter, rightCenter);
+  const currentCenter = { x: (leftCenter.x + rightCenter.x) / 2, y: (leftCenter.y + rightCenter.y) / 2 };
+
+  autoRot = false;
+
+  if (prevTwoHandDist !== null && prevTwoHandCenter !== null) {
+    const distDelta = currentDist - prevTwoHandDist;
+    const centerDX = currentCenter.x - prevTwoHandCenter.x;
+    const centerDY = currentCenter.y - prevTwoHandCenter.y;
+
+    // ── ZOOM: pinch hands together / apart ──
+    if (Math.abs(distDelta) > 0.0025) {
+      selectedScale = clamp(selectedScale + distDelta * 2.8, 0.35, 3.5);
+      setLabel('🔍 Zoom');
+    }
+
+    // ── PAN: move both hands together in same direction ──
+    if (Math.abs(centerDX) > 0.002 || Math.abs(centerDY) > 0.002) {
+      selectedOffset.x -= centerDX * 8;
+      selectedOffset.y -= centerDY * 8;
+      setLabel('✋ Pan');
+    }
+  }
+
+  prevTwoHandDist = currentDist;
+  prevTwoHandCenter = currentCenter;
+  prevTwoHandAngle = null;
+  prevLeftPos = { x: leftCenter.x, y: leftCenter.y };
+  prevRightPos = { x: rightCenter.x, y: rightCenter.y };
+  pSpider = null; pZoom = null; pPan = null;
+}
+
+function handleSingleHand(lm) {
+  // Position indicator — track palm center
+  const screenPos = { x: (1 - lm[9].x) * innerWidth, y: lm[9].y * innerHeight };
+  rightPos.x += (screenPos.x - rightPos.x) * 0.3;
+  rightPos.y += (screenPos.y - rightPos.y) * 0.3;
+
+  HDOT_RIGHT.classList.add('on');
+  HDOT_RIGHT.classList.remove('two-hand-active');
+  HDOT_RIGHT.style.left = rightPos.x + 'px';
+  HDOT_RIGHT.style.top = rightPos.y + 'px';
+  HDOT_LEFT.classList.remove('on', 'two-hand-active');
+
+  HAND_COUNT.classList.add('on');
+  HAND_COUNT.classList.remove('two');
+  HAND_COUNT.textContent = '● ONE HAND';
+
+  prevTwoHandDist = null; prevTwoHandCenter = null; prevTwoHandAngle = null;
+
+  const straightCount = countStraightFingers(lm);
+  const spider = isSpiderHand(lm);
+
+  // ── GESTURE 1: THUMBS UP → Go back to testing.html ──
+  // Thumb must be pointing up (highest point) and extended away from knuckles.
+  // We allow straightCount <= 1 in case MediaPipe misreads a curled finger.
+  const thumbHighest = lm[4].y < lm[8].y && lm[4].y < lm[12].y && lm[4].y < lm[16].y && lm[4].y < lm[20].y;
+  const isThumbsUp = straightCount <= 1 && 
+                     thumbHighest &&
+                     lm[4].y < lm[5].y - 0.04 &&
+                     d2(lm[4], lm[5]) > 0.08;
+
+  if (isThumbsUp) {
+    HDOT_RIGHT.classList.add('pinch');
+    HDOT_RIGHT.classList.remove('spider');
+    setLabel('👍 Going Back...');
+    pSpider = null; pPan = null;
+    if (!window.goingBack) {
+      window.goingBack = true;
+      setTimeout(() => { window.location.href = 'index.html'; }, 600);
+    }
+    return;
+  }
+  HDOT_RIGHT.classList.remove('pinch');
+
+  // ── GESTURE 2: SPIDER HAND → ROTATE ──
+  // Fingers curled + spread apart (loose open hand)
+  // Works ANYWHERE on screen — tracked via palm center delta
+  if (spider) {
+    HDOT_RIGHT.classList.add('spider');
+    const px = lm[9].x;
+    const py = lm[9].y;
+    if (pSpider !== null) {
+      const dx = px - pSpider.x;
+      const dy = py - pSpider.y;
+      if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) {
+        autoRot = false;
+        tRY -= dx * 10;  // Left/right → Y rotation
+        tRX += dy * 10;  // Up/down   → X rotation
+        setLabel('🕷 Rotate');
+      }
+    }
+    pSpider = { x: px, y: py };
+    pPan = null;
+    return;
+  }
+  HDOT_RIGHT.classList.remove('spider');
+  pSpider = null;
+
+  // ── GESTURE 3: FLAT PALM (fingers closed, no gap) → PAN ──
+  // Detect flat palm: all 4 fingers straight AND fingers close together (small spread)
+  const allStraight = straightCount >= 4;
+  const fingerSpread = d2(lm[8], lm[20]); // distance from index tip to pinky tip
+  const palmWidth = d2(lm[5], lm[17]);    // distance between index knuckle and pinky knuckle
+  const isClosedPalm = allStraight && fingerSpread < palmWidth * 1.3; // fingers tight together
+
+  if (isClosedPalm) {
+    // Use palm center for smooth panning, works anywhere on screen
+    const panPoint = { x: lm[9].x, y: lm[9].y };
+    if (pPan !== null) {
+      const dx = panPoint.x - pPan.x;
+      const dy = panPoint.y - pPan.y;
+      if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) {
+        selectedOffset.x -= dx * 10;
+        selectedOffset.y -= dy * 10;
+        autoRot = false;
+        setLabel('✋ Pan');
+      }
+    }
+    pPan = panPoint;
+    return;
+  }
+  pPan = null;
+
+  // ── All other hand poses: do nothing ──
+}
+
+function handleResults(r) {
+  const hands = r.multiHandLandmarks || [];
+  const handCount = hands.length;
+
+  if (handCount === 0) {
+    HDOT_LEFT.classList.remove('on', 'spider', 'two-hand-active');
+    HDOT_RIGHT.classList.remove('on', 'spider', 'two-hand-active');
+    HAND_COUNT.classList.remove('on', 'two');
+    pSpider = null; pZoom = null; pPan = null; 
+    prevTwoHandDist = null; prevTwoHandCenter = null; prevTwoHandAngle = null;
+    return;
+  }
+
+  if (handCount >= 2) {
+    handleTwoHands(hands[0], hands[1]);
+  } else {
+    handleSingleHand(hands[0]);
+  }
+}
+
+// ─────────────────────────────────────────────
+// MEDIAPIPE BOOTSTRAP
+// ─────────────────────────────────────────────
+const VER = '0.4.1675469240';
+function ldScript(src) {
+  return new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = src; s.crossOrigin = 'anonymous';
+    s.onload = ok; s.onerror = fail;
+    document.head.appendChild(s);
+  });
+}
+let handsInst = null;
+
+async function startGesture() {
+  const btn = document.getElementById('cam-btn');
+  if (btn._busy) return;
+  btn._busy = true;
+  btn.textContent = '📷 Starting…';
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' } });
+  } catch (e) {
+    btn.textContent = '⚠ Camera denied';
+    btn._busy = false;
+    return;
+  }
+
+  const vcam = document.getElementById('vcam');
+  vcam.srcObject = stream;
+  try { await vcam.play(); } catch (e) {}
+  btn.textContent = '⏳ Loading AI…';
+
+  let ok = false;
+  try { await ldScript(`https://cdn.jsdelivr.net/npm/@mediapipe/hands@${VER}/hands.js`); ok = true; } catch (e) {}
+  if (!ok) try { await ldScript(`https://unpkg.com/@mediapipe/hands@${VER}/hands.js`); ok = true; } catch (e) {}
+  if (!ok) { btn.textContent = '⚠ Load failed'; btn._busy = false; return; }
+
+  try {
+    const HC = window.Hands || window.mpHands?.Hands;
+    handsInst = new HC({
+      locateFile: f => f.startsWith('http') ? f : `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${VER}/${f}`
+    });
+    
+    handsInst.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: .6, minTrackingConfidence: .5 });
+    handsInst.onResults(handleResults);
+    await new Promise(r => setTimeout(r, 700));
+    if (vcam.readyState >= 2) await handsInst.send({ image: vcam });
+  } catch (e) {
+    btn.textContent = '⚠ Error';
+    btn._busy = false;
+    return;
+  }
+
+  btn.textContent = '✦ Hands Active';
+  
+  let proc = false, lf = Date.now();
+  async function gloop() {
+    const now = Date.now();
+    if (proc && now - lf > 1500) proc = false;
+    if (!proc && vcam.readyState >= 2) {
+      proc = true; lf = now;
+      try { await handsInst.send({ image: vcam }); } catch (e) {}
+      proc = false;
+    }
+    setTimeout(() => requestAnimationFrame(gloop), 33);
+  }
+  gloop();
+}
+
+document.getElementById('cam-btn').onclick = startGesture;
+</script>
+</body>
+</html>

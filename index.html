@@ -1,0 +1,2495 @@
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rotary Valve Advanced Gesture Test</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <style>
+    #mode-selector, #training-ui, #gesture-guide, #cam-btn, .top-banner, .action-list, #hints, #gest-label, #hand-count, #ui-back-btn { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; }
+
+    #hero-canvas {
+      position: fixed; inset: 0;
+      width: 100% !important; height: 100% !important;
+      display: block; z-index: 1;
+    }
+
+    #hints {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; z-index: 10; pointer-events: none;
+      transition: opacity 1.4s; flex-wrap: wrap; justify-content: center;
+      max-width: 90%;
+    }
+    #hints.fade { opacity: 0; }
+    .h-pill {
+      background: rgba(0,0,0,.7); border: 1px solid rgba(255,255,255,.1);
+      backdrop-filter: blur(12px); border-radius: 50px;
+      padding: 6px 14px; display: flex; align-items: center; gap: 6px;
+      font-family: monospace; font-size: 10px; letter-spacing: .1em; color: rgba(255,255,255,.4);
+    }
+    .h-pill.two-hand {
+      border-color: rgba(100,200,255,.25);
+      color: rgba(100,200,255,.6);
+    }
+
+    #gest-label {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.8); border: 1px solid rgba(255,255,255,.1);
+      backdrop-filter: blur(16px); border-radius: 100px;
+      padding: 8px 24px; font-family: monospace; font-size: 11px;
+      letter-spacing: .12em; color: rgba(255,255,255,.65); z-index: 10;
+      opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap;
+    }
+    #gest-label.on { opacity: 1; }
+    #gest-label.two-hand {
+      border-color: rgba(100,200,255,.3);
+      color: rgba(100,200,255,.85);
+    }
+
+    #hand-count {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(12px); border-radius: 50px;
+      padding: 5px 16px; font-family: monospace; font-size: 9px;
+      letter-spacing: .1em; color: rgba(255,255,255,.3); z-index: 10;
+      opacity: 0; transition: opacity .3s; pointer-events: none;
+    }
+    #hand-count.on { opacity: 1; }
+    #hand-count.two { color: rgba(100,200,255,.7); border-color: rgba(100,200,255,.2); }
+
+    #xbar {
+      position: fixed; bottom: 32px; left: 28px; z-index: 10;
+      display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+    }
+    #xbar-lbl {
+      font-family: monospace; font-size: 9px; letter-spacing: .12em;
+      color: rgba(255,255,255,.35); text-transform: uppercase;
+    }
+    #xbar-range {
+      -webkit-appearance: none; appearance: none;
+      width: 140px; height: 3px;
+      background: rgba(255,255,255,.08);
+      border-radius: 2px; outline: none; cursor: pointer;
+    }
+    #xbar-range::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: rgba(255,255,255,.45);
+      border: 1px solid rgba(255,255,255,.15);
+      cursor: pointer; transition: background .15s;
+    }
+    #xbar-range::-webkit-slider-thumb:hover {
+      background: rgba(255,255,255,.75);
+    }
+    #xbar-range::-moz-range-thumb {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: rgba(255,255,255,.45);
+      border: 1px solid rgba(255,255,255,.15);
+      cursor: pointer;
+    }
+    #xbar-range::-moz-range-track {
+      background: rgba(255,255,255,.08); height: 3px; border: none; border-radius: 2px;
+    }
+
+    /* Hand dots - Left and Right */
+    .hdot {
+      position: fixed; width: 12px; height: 12px; border-radius: 50%;
+      border: 1.5px solid rgba(255,255,255,.55); background: rgba(255,255,255,.12);
+      pointer-events: none; z-index: 20; transform: translate(-50%,-50%); display: none;
+    }
+    .hdot.on { display: block; }
+    .hdot.left {
+      border-color: rgba(255,150,100,.7);
+      background: rgba(255,150,100,.2);
+    }
+    .hdot.right {
+      border-color: rgba(100,200,255,.7);
+      background: rgba(100,200,255,.2);
+    }
+    .hdot.pinch {
+      background: rgba(255,255,255,.85);
+      width: 7px; height: 7px;
+    }
+    .hdot.spider {
+      background: rgba(180,80,255,.5);
+      border-color: rgba(180,80,255,.8);
+      width: 16px; height: 16px;
+      box-shadow: 0 0 12px rgba(180,80,255,.4);
+    }
+    .hdot.two-hand-active {
+      width: 18px; height: 18px;
+      border-width: 2px;
+      box-shadow: 0 0 15px currentColor;
+    }
+
+    /* Connection line between hands */
+    #hand-line {
+      position: fixed; z-index: 19;
+      pointer-events: none; display: none;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(255,150,100,.5), rgba(100,200,255,.5));
+      transform-origin: left center;
+      border-radius: 2px;
+    }
+    #hand-line.on { display: block; }
+
+    /* Center point indicator */
+    #center-dot {
+      position: fixed; z-index: 18;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.1);
+      transform: translate(-50%,-50%);
+      pointer-events: none; display: none;
+    }
+    #center-dot.on { display: block; }
+
+    #cam-btn {
+      position: fixed; bottom: 32px; right: 28px; z-index: 10;
+      background: rgba(0,0,0,.75); border: 1px solid rgba(255,255,255,.1);
+      backdrop-filter: blur(12px); border-radius: 50px;
+      padding: 9px 18px; font-family: monospace; font-size: 10px;
+      letter-spacing: .1em; color: rgba(255,255,255,.3); cursor: pointer;
+      transition: border-color .2s, color .2s;
+    }
+    #cam-btn:hover { border-color: rgba(255,255,255,.28); color: rgba(255,255,255,.65); }
+    #cam-btn.active { color: rgba(255,255,255,.75); border-color: rgba(255,255,255,.22); }
+
+    #loading {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+      background: #0a0a0a; transition: opacity .7s;
+    }
+    #loading.gone { opacity: 0; pointer-events: none; }
+    .ring {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 1.5px solid rgba(255,255,255,.07); border-top-color: rgba(255,255,255,.45);
+      animation: spin .85s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #load-txt { font-family: monospace; font-size: 10px; letter-spacing: .14em; color: rgba(255,255,255,.22); }
+
+    #vcam { position: fixed; top:-9999px; left:-9999px; width:320px; height:240px; opacity:0; pointer-events:none; }
+
+    /* Gesture guide overlay */
+    #gesture-guide {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(0,0,0,.92); border: 1px solid rgba(255,255,255,.1);
+      backdrop-filter: blur(20px); border-radius: 16px;
+      padding: 30px 40px; z-index: 60;
+      font-family: monospace; color: rgba(255,255,255,.7);
+      display: none; max-width: 500px; width: 90%;
+      max-height: 85vh; overflow-y: auto;
+    }
+    #gesture-guide.show { display: block; }
+    #gesture-guide h2 {
+      font-size: 14px; letter-spacing: .15em; margin-bottom: 20px;
+      color: rgba(255,255,255,.9); text-align: center;
+    }
+    #gesture-guide h3 {
+      font-size: 10px; letter-spacing: .12em; margin: 18px 0 10px;
+      color: rgba(100,200,255,.7); text-transform: uppercase;
+    }
+    .guide-row {
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .guide-row:last-child { border-bottom: none; }
+    .guide-row.two-hand { background: rgba(100,200,255,.03); margin: 0 -10px; padding: 10px; border-radius: 8px; }
+    .guide-icon { font-size: 24px; width: 44px; text-align: center; }
+    .guide-info { flex: 1; }
+    .guide-name { font-size: 11px; letter-spacing: .1em; color: rgba(255,255,255,.85); }
+    .guide-desc { font-size: 9px; letter-spacing: .08em; color: rgba(255,255,255,.35); margin-top: 3px; }
+    #guide-close:hover { background: rgba(255,255,255,.15); }
+
+    /* Mode Selector */
+    #mode-selector {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(10,10,10,.85); backdrop-filter: blur(25px);
+      transition: opacity .5s, visibility .5s;
+    }
+    #mode-selector.hide { opacity: 0; visibility: hidden; }
+    .mode-box {
+      width: 90%; max-width: 850px; text-align: center;
+    }
+    .mode-box h1 {
+      font-family: monospace; font-size: 16px; letter-spacing: .3em;
+      color: rgba(255,255,255,.9); margin-bottom: 40px;
+    }
+    .mode-options {
+      display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;
+    }
+    .mode-card {
+      flex: 1; min-width: 240px; padding: 40px 20px;
+      background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+      border-radius: 20px; cursor: pointer; transition: all .3s;
+      display: flex; flex-direction: column; align-items: center; gap: 15px;
+    }
+    .mode-card:hover {
+      background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.2);
+      transform: translateY(-5px);
+    }
+    .mode-card.premium { border-color: rgba(100,200,255,.2); background: rgba(100,200,255,.03); }
+    .mode-card.premium:hover { border-color: rgba(100,200,255,.5); }
+    
+    .m-icon { font-size: 40px; margin-bottom: 5px; }
+    .m-title { font-family: monospace; font-size: 13px; letter-spacing: .15em; color: #fff; }
+    .m-desc { font-family: monospace; font-size: 10px; letter-spacing: .08em; color: rgba(255,255,255,.3); line-height: 1.6; }
+    .m-tag {
+      font-size: 8px; letter-spacing: .1em; padding: 3px 8px; background: rgba(100,200,255,.2);
+      color: rgba(100,200,255,.8); border-radius: 4px; margin-top: 5px;
+    }
+
+    /* Training UI Overlay */
+    #training-ui {
+      position: fixed; inset: 0; z-index: 80;
+      background: rgba(10,10,10,.95); backdrop-filter: blur(25px);
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      padding: 40px 20px; transition: opacity .4s; opacity: 0; pointer-events: none;
+      overflow-y: auto;
+    }
+    #training-ui.show { opacity: 1; pointer-events: auto; }
+    
+    .train-header { margin-bottom: 30px; text-align: center; }
+    .train-header h1 { font-family: monospace; font-size: 20px; letter-spacing: .2em; color: #fff; }
+    .train-header p { font-family: monospace; font-size: 11px; color: rgba(255,255,255,.5); margin-top: 8px; }
+    
+    .action-list {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 15px; width: 100%; max-width: 900px;
+    }
+    
+    .action-item {
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px; padding: 20px; display: flex; align-items: center; justify-content: space-between;
+      transition: all .2s;
+    }
+    .action-item:hover { border-color: rgba(100,200,255,.4); background: rgba(255,255,255,.08); }
+    .action-info { flex: 1; }
+    .action-name { font-family: monospace; font-size: 14px; color: #fff; letter-spacing: .05em; margin-bottom: 4px; }
+    .action-desc { font-family: monospace; font-size: 10px; color: rgba(255,255,255,.4); line-height: 1.4; }
+    
+    .train-btn {
+      background: rgba(100,200,255,.15); border: 1px solid rgba(100,200,255,.3);
+      color: rgba(100,200,255,.9); padding: 8px 16px; border-radius: 6px;
+      font-family: monospace; font-size: 10px; letter-spacing: .1em; cursor: pointer;
+      transition: all .2s; margin-left: 15px; flex-shrink: 0;
+    }
+    .train-btn:hover { background: rgba(100,200,255,.3); border-color: rgba(100,200,255,.6); }
+    .train-btn.done { background: rgba(100,255,150,.15); border-color: rgba(100,255,150,.3); color: rgba(100,255,150,.9); }
+    
+    .train-done-btn {
+      margin-top: 40px; padding: 12px 30px; font-size: 12px; letter-spacing: .15em;
+      background: #fff; color: #000; border: none; border-radius: 50px; cursor: pointer;
+      font-family: monospace; transition: transform .2s;
+    }
+    .train-done-btn:hover { transform: scale(1.05); }
+
+    /* Capture Overlay */
+    #capture-overlay {
+      position: fixed; inset: 0; z-index: 90;
+      background: rgba(0,0,0,.6); backdrop-filter: blur(8px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+    }
+    #capture-overlay.show { opacity: 1; pointer-events: auto; }
+    #preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; opacity: 0.6; }
+    #capture-msg { font-family: monospace; font-size: 24px; color: #fff; letter-spacing: .1em; margin-bottom: 20px; text-align: center; }
+    #capture-submsg { font-family: monospace; font-size: 14px; color: rgba(255,255,255,.6); margin-bottom: 30px; text-align: center; }
+    #capture-btn {
+      padding: 15px 40px; font-size: 14px; background: rgba(255,100,100,.2); border: 1px solid rgba(255,100,100,.5);
+      color: rgba(255,150,150,.9); border-radius: 50px; cursor: pointer; font-family: monospace; letter-spacing: .1em;
+    }
+    #capture-btn:hover { background: rgba(255,100,100,.4); }
+    
+    #capture-cancel { position: absolute; top: 30px; right: 30px; color: #fff; font-family: monospace; font-size: 12px; cursor: pointer; padding: 10px; border: 1px solid rgba(255,255,255,.2); border-radius: 6px; }
+
+  </style>
+</head>
+<body>
+
+<!-- Mode Selection Overlay -->
+<div id="mode-selector" style="display: none !important;">
+  <div class="mode-box">
+    <h1>SELECT EXPERIENCE</h1>
+    <div class="mode-options">
+      <div class="mode-card" onclick="location.href='landingpage.html'">
+        <div class="m-icon">🚀</div>
+        <div class="m-title">LANDING PAGE</div>
+        <div class="m-desc">Premium product showcase<br>Features & interaction</div>
+      </div>
+      <div class="mode-card" onclick="location.href='singlehand.html'">
+        <div class="m-icon">☝️</div>
+        <div class="m-title">SINGLE HAND</div>
+        <div class="m-desc">Simple & classic interaction<br>Ideal for quick viewing</div>
+      </div>
+      <div class="mode-card premium" onclick="document.getElementById('mode-selector').classList.add('hide'); appMode='presentation';">
+        <div class="m-icon">🤲</div>
+        <div class="m-title">TWO HANDS</div>
+        <div class="m-desc">Precision 3D manipulation<br>Advanced spatial control</div>
+        <div class="m-tag">RECOMMENDED</div>
+      </div>
+      <div class="mode-card" onclick="document.getElementById('mode-selector').classList.add('hide'); startTrainingMode();">
+        <div class="m-icon">🛠️</div>
+        <div class="m-title">TRAIN GESTURES</div>
+        <div class="m-desc">Create custom gestures<br>for each control</div>
+        <div class="m-tag" style="background:rgba(255,150,100,.2); color:rgba(255,150,100,.8)">NEW</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="loading"><div class="ring"></div><div id="load-txt">LOADING…</div></div>
+
+<div id="ui-back-btn" onclick="clearSelection(false); tRX = 0; tRY = 0; tZoom = 7; explodeTarget = 0; autoRot = true; resetAllPartTransforms();" style="position:fixed; top:20px; left:20px; z-index:50; background:rgba(255,100,100,.2); border:1px solid rgba(255,100,100,.5); padding:10px 20px; color:#fff; font-family:monospace; font-size:14px; border-radius:50px; cursor:pointer; display:none;">⬅ BACK</div>
+<canvas id="hero-canvas"></canvas>
+
+<!-- Two hand dots -->
+<div id="hdot-left" class="hdot left"></div>
+<div id="hdot-right" class="hdot right"></div>
+<div id="hand-line"></div>
+<div id="center-dot"></div>
+
+<div id="gest-label"></div>
+<div id="hand-count">● ONE HAND</div>
+
+<div id="xbar">
+  <div id="xbar-lbl">Explode</div>
+  <input type="range" id="xbar-range" min="0" max="100" value="0">
+</div>
+
+<div id="hints">
+  <div class="h-pill two-hand">✋✋ Apart = Explode</div>
+  <div class="h-pill two-hand">🙏 Together = Implode</div>
+  <div class="h-pill">🤏 Pinch Part = Select</div>
+  <div class="h-pill">☝️ Move = Pan Part</div>
+  <div class="h-pill two-hand">⟷ Both Move = Rotate</div>
+  <div class="h-pill">🕷️ Spider = Rotate</div>
+  <div class="h-pill">✌️ Zoom</div>
+  <div class="h-pill">🤏 Reset</div>
+</div>
+
+<!-- Training UI -->
+<div id="training-ui">
+  <div class="train-header">
+    <h1>CUSTOM GESTURES</h1>
+    <p>Bind your own hand motions to model controls.</p>
+    <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+      <button class="train-btn" onclick="exportGestures()">EXPORT TO FILE</button>
+      <label class="train-btn" style="cursor:pointer;">
+        IMPORT FROM FILE
+        <input type="file" id="import-gestures" accept=".json" style="display:none;" onchange="importGestures(event)">
+      </label>
+    </div>
+  </div>
+  <div class="action-list" id="action-list"></div>
+  <button class="train-done-btn" onclick="finishTraining()">DONE / PRESENTATION MODE</button>
+</div>
+
+<!-- Capture Overlay -->
+<div id="capture-overlay">
+  <canvas id="preview-canvas" width="640" height="480"></canvas>
+  <div id="capture-cancel" onclick="cancelCapture()">CANCEL</div>
+  <div id="capture-msg">Ready to Capture</div>
+  <div id="capture-submsg">Please show your hands to the camera.</div>
+  <button id="capture-btn" onclick="startCapture()">CAPTURE NOW</button>
+</div>
+
+<!-- Gesture Guide Overlay -->
+<div id="gesture-guide">
+  <h2>✦ HAND GESTURES</h2>
+  
+  <h3>✋✋ Two-Hand Controls (Priority)</h3>
+  <div class="guide-row two-hand">
+    <div class="guide-icon">🤲</div>
+    <div class="guide-info">
+      <div class="guide-name">HANDS APART → EXPLODE</div>
+      <div class="guide-desc">Move both hands away from each other to explode the model.</div>
+    </div>
+  </div>
+  <div class="guide-row two-hand">
+    <div class="guide-icon">🙏</div>
+    <div class="guide-info">
+      <div class="guide-name">HANDS TOGETHER → IMPLODE</div>
+      <div class="guide-desc">Bring both hands closer together to assemble the model.</div>
+    </div>
+  </div>
+  <div class="guide-row two-hand">
+    <div class="guide-icon">⟷</div>
+    <div class="guide-info">
+      <div class="guide-name">BOTH HANDS MOVE → ROTATE</div>
+      <div class="guide-desc">Move both hands in same direction to rotate model.</div>
+    </div>
+  </div>
+  <div class="guide-row two-hand">
+    <div class="guide-icon">↕</div>
+    <div class="guide-info">
+      <div class="guide-name">BOTH HANDS UP/DOWN → ZOOM</div>
+      <div class="guide-desc">Both hands up = zoom in, both down = zoom out.</div>
+    </div>
+  </div>
+
+  <h3>☝️ Single-Hand Controls (Fallback)</h3>
+  <div class="guide-row">
+    <div class="guide-icon">🕷️</div>
+    <div class="guide-info">
+      <div class="guide-name">SPIDER HAND → ROTATE</div>
+      <div class="guide-desc">All 5 fingers curved like a claw, spread apart. Move hand to rotate.</div>
+    </div>
+  </div>
+  <div class="guide-row">
+    <div class="guide-icon">✌️</div>
+    <div class="guide-info">
+      <div class="guide-name">TWO FINGERS → ZOOM</div>
+      <div class="guide-desc">Index + middle finger up. Spread apart = zoom in, close = zoom out.</div>
+    </div>
+  </div>
+  <div class="guide-row">
+    <div class="guide-icon">🤏</div>
+    <div class="guide-info">
+      <div class="guide-name">PINCH → RESET</div>
+      <div class="guide-desc">Thumb touches index fingertip. Resets everything.</div>
+    </div>
+  </div>
+  <button id="guide-close">GOT IT</button>
+</div>
+
+<video id="vcam" autoplay muted playsinline style="display: none;"></video>
+<button id="cam-btn">✦ Hand Control</button>
+
+<script>
+// ─────────────────────────────────────────────
+// RENDERER
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('hero-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0a0a0a, 1);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.physicallyCorrectLights = true;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 1000);
+camera.position.set(0, 0, 7);
+
+const pivot = new THREE.Group();
+scene.add(pivot);
+
+// Dedicated Isolation Scene
+const isolatedPivot = new THREE.Group();
+const isolatedContainer = new THREE.Group();
+isolatedPivot.add(isolatedContainer);
+scene.add(isolatedPivot);
+
+function onResize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+onResize(); addEventListener('resize', onResize);
+
+const mainLight = new THREE.DirectionalLight(0xffffff, 2);
+mainLight.position.set(5, 10, 7);
+scene.add(mainLight);
+
+const fillLight = new THREE.DirectionalLight(0xa0a0ff, 1);
+fillLight.position.set(-5, 0, -5);
+scene.add(fillLight);
+
+// ─────────────────────────────────────────────
+// EXPLODE STATE
+// ─────────────────────────────────────────────
+let parts = [];
+let explodeFactor = 0;
+let explodeTarget = 0;
+const MAX_BLAST = 5.0;
+
+// ─────────────────────────────────────────────
+// PART PICK / SELECT STATE
+// ─────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+const hoverBox = new THREE.BoxHelper(new THREE.Object3D(), 0x66ccff);
+const selectedBox = new THREE.BoxHelper(new THREE.Object3D(), 0xffd166);
+hoverBox.visible = false;
+selectedBox.visible = false;
+scene.add(hoverBox);
+scene.add(selectedBox);
+
+let hoveredPart = null;
+let selectedPart = null;
+let selectedScale = 1;
+let lastPickAt = 0;
+
+function getPartByMesh(mesh) {
+  return parts.find(p => p.mesh === mesh || p.mesh.uuid === mesh.uuid) || null;
+}
+
+function setBoxTarget(box, mesh, visible) {
+  box.visible = !!(visible && mesh);
+  if (box.visible) box.setFromObject(mesh);
+}
+
+function updatePickTarget(screenX, screenY) {
+  pointerNdc.set((screenX / innerWidth) * 2 - 1, -(screenY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointerNdc, camera);
+
+  const testMeshes = isIsolationMode && selectedPart ? [selectedPart.mesh] : parts.map(p => p.mesh);
+  const hits = raycaster.intersectObjects(testMeshes, false);
+  
+  hoveredPart = hits.length ? getPartByMesh(hits[0].object) : null;
+  
+  if (isIsolationMode) {
+    setBoxTarget(hoverBox, null, false);
+  } else {
+    setBoxTarget(hoverBox, hoveredPart?.mesh, hoveredPart && hoveredPart !== selectedPart);
+  }
+}
+
+let isIsolationMode = false;
+
+function selectPart(part) {
+  selectedPart = part || null;
+  setBoxTarget(selectedBox, null, false);
+  setLabel(selectedPart ? '✓ Part Selected' : 'Selection Cleared');
+  
+  if (selectedPart) {
+    isIsolationMode = true;
+    renderer.setClearColor(0xffffff, 1);
+    
+    // Hide main model
+    scene.remove(pivot);
+    
+    // Add to isolated container
+    isolatedContainer.add(selectedPart.mesh);
+    selectedPart.mesh.position.copy(selectedPart.restPos);
+    selectedPart.mesh.quaternion.copy(selectedPart.restQuat);
+    selectedPart.mesh.scale.copy(selectedPart.restScale);
+    
+    // Center it
+    isolatedContainer.position.copy(selectedPart.centroid).multiplyScalar(-1);
+    isolatedPivot.rotation.copy(pivot.rotation);
+  }
+}
+
+function clearSelection(resetTransform = false) {
+  if (selectedPart && resetTransform) {
+    selectedPart.selectedOffset.set(0, 0, 0);
+    selectedPart.selectedEuler.set(0, 0, 0);
+    selectedPart.selectedScale = 1;
+  }
+  if (isIsolationMode && selectedPart) {
+    pivot.add(selectedPart.mesh);
+    scene.add(pivot);
+    renderer.setClearColor(0x0a0a0a, 1);
+  }
+  
+  selectedPart = null;
+  selectedBox.visible = false;
+  isIsolationMode = false;
+}
+
+function resetAllPartTransforms() {
+  parts.forEach(part => {
+    part.selectedOffset.set(0, 0, 0);
+    part.selectedEuler.set(0, 0, 0);
+    part.selectedScale = 1;
+  });
+  clearSelection(false);
+}
+
+function tryPickSelectedPart(screenX, screenY) {
+  if (Date.now() - lastPickAt < 550) return false;
+  lastPickAt = Date.now();
+  updatePickTarget(screenX, screenY);
+  if (hoveredPart) {
+    const idx = parts.indexOf(hoveredPart);
+    if (idx !== -1) {
+      window.location.href = `isolated_part.html?part=${idx}`;
+    }
+    return true;
+  }
+  if (selectedPart) {
+    clearSelection(false);
+    setLabel('Selection Cleared');
+    return true;
+  }
+  setLabel('Explode Then Pick');
+  return false;
+}
+
+// ─────────────────────────────────────────────
+// MATERIAL FIX
+// ─────────────────────────────────────────────
+function fixMat(mat) {
+  if (!mat) return;
+  if (mat.emissive) mat.emissive.setScalar(0);
+  mat.emissiveIntensity = 0;
+  mat.side = THREE.FrontSide;
+  if (mat.transparent && mat.opacity >= 0.9) {
+    mat.transparent = false; mat.opacity = 1;
+  }
+  mat.needsUpdate = true;
+}
+function fixMaterials(root) {
+  root.traverse(c => {
+    if (!c.isMesh) return;
+    Array.isArray(c.material) ? c.material.forEach(fixMat) : fixMat(c.material);
+  });
+}
+
+// ─────────────────────────────────────────────
+// APPLY EXPLODE & TRANSFORM
+// ─────────────────────────────────────────────
+function applyExplode(t) {
+  if (isIsolationMode) {
+    if (selectedPart) {
+      isolatedPivot.position.copy(selectedPart.selectedOffset);
+      selectedPart.mesh.quaternion.copy(selectedPart.restQuat);
+      selectedPart.mesh.rotateX(selectedPart.selectedEuler.x);
+      selectedPart.mesh.rotateY(selectedPart.selectedEuler.y);
+      selectedPart.mesh.rotateZ(selectedPart.selectedEuler.z);
+      selectedPart.mesh.scale.copy(selectedPart.restScale).multiplyScalar(selectedPart.selectedScale);
+      setBoxTarget(selectedBox, null, false); // Remove boundary
+    }
+    return;
+  }
+
+  parts.forEach(({ mesh, restPos, restQuat, restScale, blastDir, blastDist, selectedOffset, selectedEuler, selectedScale }) => {
+    mesh.position.x = restPos.x + blastDir.x * t * blastDist + selectedOffset.x;
+    mesh.position.y = restPos.y + blastDir.y * t * blastDist + selectedOffset.y;
+    mesh.position.z = restPos.z + blastDir.z * t * blastDist + selectedOffset.z;
+    mesh.quaternion.copy(restQuat);
+    mesh.rotateX(selectedEuler.x);
+    mesh.rotateY(selectedEuler.y);
+    mesh.rotateZ(selectedEuler.z);
+    mesh.scale.copy(restScale).multiplyScalar(selectedScale);
+  });
+
+  if (hoveredPart && hoveredPart !== selectedPart) setBoxTarget(hoverBox, hoveredPart.mesh, true);
+  if (selectedPart) setBoxTarget(selectedBox, selectedPart.mesh, true);
+}
+
+// ─────────────────────────────────────────────
+// MODEL LOAD — FLATTENED HIERARCHY
+// ─────────────────────────────────────────────
+const loader = new THREE.GLTFLoader();
+
+loader.load('./rotaryValve.gltf', gltf => {
+
+  const model = gltf.scene;
+  fixMaterials(model);
+
+  const rawBox = new THREE.Box3().setFromObject(model);
+  const rawSize = new THREE.Vector3(); rawBox.getSize(rawSize);
+  const rawCtr = new THREE.Vector3(); rawBox.getCenter(rawCtr);
+
+  const scaleFactor = 3.5 / Math.max(rawSize.x, rawSize.y, rawSize.z);
+  model.scale.setScalar(scaleFactor);
+
+  model.position.set(
+    -rawCtr.x * scaleFactor,
+    -rawCtr.y * scaleFactor,
+    -rawCtr.z * scaleFactor
+  );
+
+  pivot.add(model);
+  scene.updateMatrixWorld(true);
+
+  const invPivotMat = new THREE.Matrix4().copy(pivot.matrixWorld).invert();
+
+  const meshInfos = [];
+  model.traverse(child => {
+    if (!child.isMesh) return;
+    if (child.isSkinnedMesh) return;
+
+    const pivotLocalMat = new THREE.Matrix4()
+      .multiplyMatrices(invPivotMat, child.matrixWorld);
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+    pivotLocalMat.decompose(pos, quat, scl);
+
+    child.geometry.computeBoundingBox();
+    const geoCentroid = new THREE.Vector3();
+    if (child.geometry.boundingBox) {
+      child.geometry.boundingBox.getCenter(geoCentroid);
+    }
+    geoCentroid.applyMatrix4(child.matrixWorld);
+    geoCentroid.applyMatrix4(invPivotMat);
+
+    meshInfos.push({ mesh: child, pos, quat, scl, centroid: geoCentroid });
+  });
+
+  meshInfos.forEach(({ mesh, pos, quat, scl, centroid }, idx) => {
+    pivot.add(mesh);
+    mesh.position.copy(pos);
+    mesh.quaternion.copy(quat);
+    mesh.scale.copy(scl);
+
+    const restPos = pos.clone();
+    const restQuat = quat.clone();
+    const restScale = scl.clone();
+
+    let blastDir = centroid.clone();
+    if (blastDir.lengthSq() < 1e-6) {
+      blastDir.set(
+        Math.sin(idx * 2.399) * Math.cos(idx * 1.618),
+        Math.cos(idx * 2.399),
+        Math.sin(idx * 1.618)
+      );
+    }
+    blastDir.normalize();
+
+    const distFromCenter = centroid.length();
+    const blastDist = MAX_BLAST *
+      THREE.MathUtils.clamp(0.6 + distFromCenter * 0.25, 0.6, 1.2);
+
+    parts.push({
+      mesh,
+      restPos,
+      restQuat,
+      restScale,
+      blastDir,
+      blastDist,
+      centroid: centroid,
+      selectedOffset: new THREE.Vector3(),
+      selectedEuler: new THREE.Euler(),
+      selectedScale: 1
+    });
+  });
+
+  pivot.remove(model);
+
+  console.log(`[Explode] Flattened ${parts.length} meshes`);
+  document.getElementById('loading').classList.add('gone');
+
+}, xhr => {
+  const pct = xhr.total ? Math.round(xhr.loaded / xhr.total * 100) : '…';
+  document.getElementById('load-txt').textContent = `LOADING… ${pct}%`;
+}, () => {
+  buildFallback();
+  document.getElementById('loading').classList.add('gone');
+});
+
+// Procedural fallback
+function buildFallback() {
+  const defs = [
+    { geo: new THREE.TorusGeometry(1.5, .35, 16, 64), color: 0x888888, y: 0.0 },
+    { geo: new THREE.SphereGeometry(.8, 32, 32), color: 0xaaaaaa, y: 0.0 },
+    { geo: new THREE.CylinderGeometry(1.6, 1.6, .12, 48), color: 0x666666, y: -1.0 },
+    { geo: new THREE.BoxGeometry(.4, .4, .4), color: 0xcccccc, y: 1.1 },
+    { geo: new THREE.ConeGeometry(.5, .8, 24), color: 0x999999, y: 1.0 },
+  ];
+  defs.forEach((d, i) => {
+    const m = new THREE.Mesh(d.geo, new THREE.MeshStandardMaterial({
+      color: d.color, roughness: .5, metalness: .3, side: THREE.FrontSide
+    }));
+    const angle = i * Math.PI * 2 / defs.length;
+    m.position.set(
+      Math.cos(angle) * (i === 0 ? 0 : 0.8), d.y,
+      Math.sin(angle) * (i === 0 ? 0 : 0.8)
+    );
+    pivot.add(m);
+
+    const blastDir = m.position.clone();
+    if (blastDir.lengthSq() < 0.01) blastDir.set(0, 1, 0);
+    blastDir.normalize();
+
+    parts.push({
+      mesh: m,
+      restPos: m.position.clone(),
+      restQuat: m.quaternion.clone(),
+      restScale: m.scale.clone(),
+      blastDir,
+      blastDist: MAX_BLAST,
+      selectedOffset: new THREE.Vector3(),
+      selectedEuler: new THREE.Euler(),
+      selectedScale: 1
+    });
+  });
+}
+
+// ─────────────────────────────────────────────
+// MOUSE / TOUCH / KEYBOARD
+// ─────────────────────────────────────────────
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+let autoRot = true;
+let tRX = 0, tRY = 0, tZoom = 7;
+let dragging = false, lx = 0, ly = 0, lPinch = 0;
+
+canvas.addEventListener('mousedown', e => {
+  dragging = true; lx = e.clientX; ly = e.clientY; autoRot = false;
+});
+addEventListener('mouseup', () => dragging = false);
+addEventListener('mousemove', e => {
+  if (!dragging) return;
+  tRY += (e.clientX - lx) * .011;
+  tRX += (e.clientY - ly) * .011;
+  lx = e.clientX; ly = e.clientY;
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.shiftKey) {
+    explodeTarget = clamp(explodeTarget - e.deltaY * 0.001, 0, 1);
+  } else {
+    tZoom = clamp(tZoom + e.deltaY * .007, 1.5, 18);
+  }
+}, { passive: false });
+
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === 'e') explodeTarget = clamp(explodeTarget + 0.04, 0, 1);
+  if (k === 'q') explodeTarget = clamp(explodeTarget - 0.04, 0, 1);
+  if (k === 'r') {
+    explodeTarget = 0; tRX = 0; tRY = 0; tZoom = 7; autoRot = true;
+    resetAllPartTransforms();
+  }
+  if (k === 'x') clearSelection(false);
+});
+
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    dragging = true; autoRot = false;
+    lx = e.touches[0].clientX; ly = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    lPinch = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+  }
+}, { passive: true });
+addEventListener('touchend', () => dragging = false);
+addEventListener('touchmove', e => {
+  if (e.touches.length === 1 && dragging) {
+    tRY += (e.touches[0].clientX - lx) * .011;
+    tRX += (e.touches[0].clientY - ly) * .011;
+    lx = e.touches[0].clientX; ly = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    const d = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    tZoom = clamp(tZoom - (d - lPinch) * .02, 1.5, 18);
+    lPinch = d;
+  }
+}, { passive: true });
+
+// ─────────────────────────────────────────────
+// SLIDER
+// ─────────────────────────────────────────────
+const xbarRange = document.getElementById('xbar-range');
+let sliderActive = false;
+
+xbarRange.addEventListener('input', () => {
+  explodeTarget = xbarRange.value / 100;
+  autoRot = false;
+});
+xbarRange.addEventListener('pointerdown', () => sliderActive = true);
+addEventListener('pointerup', () => sliderActive = false);
+
+// ─────────────────────────────────────────────
+// GESTURE GUIDE
+// ─────────────────────────────────────────────
+const guideEl = document.getElementById('gesture-guide');
+document.getElementById('guide-close').onclick = () => {
+  guideEl.classList.remove('show');
+};
+
+// ─────────────────────────────────────────────
+// LABEL
+// ─────────────────────────────────────────────
+const GL = document.getElementById('gest-label');
+let glT;
+function setLabel(t, twoHand = false) {
+  GL.textContent = t;
+  GL.classList.add('on');
+  GL.classList.toggle('two-hand', twoHand);
+  clearTimeout(glT);
+  glT = setTimeout(() => GL.classList.remove('on', 'two-hand'), 2000);
+}
+
+// ─────────────────────────────────────────────
+// RENDER LOOP
+// ─────────────────────────────────────────────
+(function loop() {
+  requestAnimationFrame(loop);
+
+  if (autoRot) {
+    tRY += 0.005;
+  }
+  
+  pivot.rotation.x += (tRX - pivot.rotation.x) * 0.1;
+  pivot.rotation.y += (tRY - pivot.rotation.y) * 0.1;
+  
+  isolatedPivot.rotation.x += (tRX - isolatedPivot.rotation.x) * 0.1;
+  isolatedPivot.rotation.y += (tRY - isolatedPivot.rotation.y) * 0.1;
+
+  camera.position.z += (tZoom - camera.position.z) * 0.1;
+
+  explodeFactor += (explodeTarget - explodeFactor) * .06;
+  if (parts.length) applyExplode(explodeFactor);
+
+  if (!sliderActive) {
+    xbarRange.value = Math.round(explodeFactor * 100);
+  }
+
+  const backBtn = document.getElementById('ui-back-btn');
+  if(backBtn) {
+    backBtn.style.display = (selectedPart || explodeFactor > 0.1) ? 'block' : 'none';
+  }
+
+  renderer.render(scene, camera);
+})();
+
+setTimeout(() => document.getElementById('hints').classList.add('fade'), 12000);
+
+// ─────────────────────────────────────────────
+// ★★★ GESTURE DETECTION — TWO HANDS ★★★
+// ─────────────────────────────────────────────
+
+function d2(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// Check if a finger is FULLY extended (straight)
+function isFingerStraight(lm, tipIdx, pipIdx) {
+  return lm[tipIdx].y < lm[pipIdx].y - 0.03;
+}
+
+// Check if a finger is BENT/CURLED (spider-like)
+function isFingerCurved(lm, tipIdx, dipIdx, pipIdx, mcpIdx) {
+  const tipY = lm[tipIdx].y;
+  const dipY = lm[dipIdx].y;
+  const pipY = lm[pipIdx].y;
+  const mcpY = lm[mcpIdx].y;
+
+  const bentDown = tipY > pipY - 0.04;
+  const notFist = tipY < mcpY + 0.06;
+  const dipBent = dipY > pipY - 0.02;
+
+  return bentDown && notFist && dipBent;
+}
+
+// Check if fingers are SPREAD apart
+function areFingerSpread(lm) {
+  const spreadDist = d2(lm[8], lm[20]);
+  const baseDist = d2(lm[5], lm[17]);
+  return spreadDist > baseDist * 0.6;
+}
+
+// SPIDER HAND DETECTION
+function isSpiderHand(lm) {
+  const indexCurved = isFingerCurved(lm, 8, 7, 6, 5);
+  const middleCurved = isFingerCurved(lm, 12, 11, 10, 9);
+  const ringCurved = isFingerCurved(lm, 16, 15, 14, 13);
+  const pinkyCurved = isFingerCurved(lm, 20, 19, 18, 17);
+
+  const thumbOut = lm[4].x < lm[3].x - 0.01 || lm[4].x > lm[3].x + 0.01;
+
+  const curvedCount = [indexCurved, middleCurved, ringCurved, pinkyCurved]
+    .filter(Boolean).length;
+
+  const spread = areFingerSpread(lm);
+
+  return curvedCount >= 3 && spread && thumbOut;
+}
+
+// Count EXTENDED fingers
+function countStraightFingers(lm) {
+  const tips = [8, 12, 16, 20];
+  const pips = [6, 10, 14, 18];
+  let count = 0;
+  for (let i = 0; i < 4; i++) {
+    if (lm[tips[i]].y < lm[pips[i]].y - 0.025) count++;
+  }
+  return count;
+}
+
+// Get palm center (average of key points)
+function getPalmCenter(lm) {
+  return {
+    x: (lm[0].x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 5,
+    y: (lm[0].y + lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 5
+  };
+}
+
+// ─────────────────────────────────────────────
+// UI ELEMENTS
+// ─────────────────────────────────────────────
+const HDOT_LEFT = document.getElementById('hdot-left');
+const HDOT_RIGHT = document.getElementById('hdot-right');
+const HAND_LINE = document.getElementById('hand-line');
+const CENTER_DOT = document.getElementById('center-dot');
+const HAND_COUNT = document.getElementById('hand-count');
+
+// Smoothed positions
+let leftPos = { x: innerWidth * 0.3, y: innerHeight / 2 };
+let rightPos = { x: innerWidth * 0.7, y: innerHeight / 2 };
+
+// Previous frame data for two-hand tracking
+let prevTwoHandDist = null;
+let prevTwoHandCenter = null;
+let prevTwoHandAngle = null;
+let prevLeftPos = null;
+let prevRightPos = null;
+
+// Single hand state
+let gestOK = false, pOn = false;
+let pSpider = null, pZoom = null, lastG = '';
+
+function updateHandLine() {
+  const dx = rightPos.x - leftPos.x;
+  const dy = rightPos.y - leftPos.y;
+  const dist = Math.hypot(dx, dy);
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+  HAND_LINE.style.left = leftPos.x + 'px';
+  HAND_LINE.style.top = leftPos.y + 'px';
+  HAND_LINE.style.width = dist + 'px';
+  HAND_LINE.style.transform = `rotate(${angle}deg)`;
+
+  const cx = (leftPos.x + rightPos.x) / 2;
+  const cy = (leftPos.y + rightPos.y) / 2;
+  CENTER_DOT.style.left = cx + 'px';
+  CENTER_DOT.style.top = cy + 'px';
+}
+
+// ═══════════════════════════════════════════════
+// TWO-HAND GESTURE PROCESSING
+// ═══════════════════════════════════════════════
+function handleTwoHands(lm1, lm2) {
+  // Determine left vs right hand based on X position
+  const center1 = getPalmCenter(lm1);
+  const center2 = getPalmCenter(lm2);
+
+  let leftLm, rightLm;
+  if (center1.x > center2.x) {
+    // Remember: camera is mirrored, so larger X = left hand
+    leftLm = lm1;
+    rightLm = lm2;
+  } else {
+    leftLm = lm2;
+    rightLm = lm1;
+  }
+
+  const leftCenter = getPalmCenter(leftLm);
+  const rightCenter = getPalmCenter(rightLm);
+
+  // Convert to screen coordinates (mirrored)
+  const screenLeft = {
+    x: (1 - leftCenter.x) * innerWidth,
+    y: leftCenter.y * innerHeight
+  };
+  const screenRight = {
+    x: (1 - rightCenter.x) * innerWidth,
+    y: rightCenter.y * innerHeight
+  };
+
+  // Smooth positions
+  leftPos.x += (screenLeft.x - leftPos.x) * 0.3;
+  leftPos.y += (screenLeft.y - leftPos.y) * 0.3;
+  rightPos.x += (screenRight.x - rightPos.x) * 0.3;
+  rightPos.y += (screenRight.y - rightPos.y) * 0.3;
+
+  // Show hand dots and connection line
+  HDOT_LEFT.classList.add('on', 'two-hand-active');
+  HDOT_RIGHT.classList.add('on', 'two-hand-active');
+  HDOT_LEFT.style.left = leftPos.x + 'px';
+  HDOT_LEFT.style.top = leftPos.y + 'px';
+  HDOT_RIGHT.style.left = rightPos.x + 'px';
+  HDOT_RIGHT.style.top = rightPos.y + 'px';
+
+  HAND_LINE.classList.add('on');
+  CENTER_DOT.classList.add('on');
+  updateHandLine();
+
+  // Update hand count indicator
+  HAND_COUNT.classList.add('on', 'two');
+  HAND_COUNT.textContent = '●● TWO HANDS';
+
+  // ── Calculate metrics ──
+  const currentDist = d2(leftCenter, rightCenter);
+  const currentCenter = {
+    x: (leftCenter.x + rightCenter.x) / 2,
+    y: (leftCenter.y + rightCenter.y) / 2
+  };
+  const currentAngle = Math.atan2(rightCenter.y - leftCenter.y, rightCenter.x - leftCenter.x);
+
+  autoRot = false;
+
+  if (selectedPart) {
+    if (prevTwoHandDist !== null && prevTwoHandCenter !== null && prevTwoHandAngle !== null) {
+      const distDelta = currentDist - prevTwoHandDist;
+      const centerDX = currentCenter.x - prevTwoHandCenter.x;
+      const centerDY = currentCenter.y - prevTwoHandCenter.y;
+      const angleDelta = currentAngle - prevTwoHandAngle;
+
+      if (Math.abs(distDelta) > 0.0025) {
+        selectedPart.selectedScale = clamp(selectedPart.selectedScale + distDelta * 2.8, 0.35, 3.5);
+        selectedScale = selectedPart.selectedScale;
+        setLabel(distDelta > 0 ? 'Part Zoom In' : 'Part Zoom Out', true);
+      }
+
+      if (Math.abs(centerDX) > 0.002 || Math.abs(centerDY) > 0.002) {
+        selectedPart.selectedOffset.x -= centerDX * 8;
+        selectedPart.selectedOffset.y -= centerDY * 8;
+        setLabel('Part Pan', true);
+      }
+
+      if (Math.abs(angleDelta) > 0.01 && Math.abs(angleDelta) < 0.4) {
+        selectedPart.selectedEuler.z += angleDelta;
+        setLabel('Part 360 Rotate', true);
+      }
+    }
+
+    prevTwoHandDist = currentDist;
+    prevTwoHandCenter = currentCenter;
+    prevTwoHandAngle = currentAngle;
+    prevLeftPos = { x: leftCenter.x, y: leftCenter.y };
+    prevRightPos = { x: rightCenter.x, y: rightCenter.y };
+    pSpider = null; pZoom = null; pPan = null; lastG = 'twohand-selected';
+    return;
+  }
+
+  let isRotating = false;
+
+  // ═══════════════════════════════════════════
+  // TWO-HAND: ROTATE
+  // Both hands moving same direction
+  // ═══════════════════════════════════════════
+  if (prevLeftPos !== null && prevRightPos !== null) {
+    const leftDX = leftCenter.x - prevLeftPos.x;
+    const leftDY = leftCenter.y - prevLeftPos.y;
+    const rightDX = rightCenter.x - prevRightPos.x;
+    const rightDY = rightCenter.y - prevRightPos.y;
+
+    // Check if both hands moving in same direction
+    const sameDirectionX = (leftDX > 0.002 && rightDX > 0.002) || (leftDX < -0.002 && rightDX < -0.002);
+    const sameDirectionY = (leftDY > 0.002 && rightDY > 0.002) || (leftDY < -0.002 && rightDY < -0.002);
+
+    // Average movement
+    const avgDX = (leftDX + rightDX) / 2;
+    const avgDY = (leftDY + rightDY) / 2;
+
+    // Horizontal movement = Y rotation
+    if (sameDirectionX && Math.abs(avgDX) > 0.003) {
+      tRY -= avgDX * 6;
+      setLabel('⟷ Rotate ' + (avgDX < 0 ? '→' : '←'), true);
+      isRotating = true;
+    }
+
+    // Vertical movement = X rotation OR zoom
+    if (sameDirectionY && Math.abs(avgDY) > 0.003) {
+      // If hands are close together, use for rotation
+      // If hands are apart, use for zoom
+      if (currentDist < 0.35) {
+        tRX += avgDY * 6;
+        setLabel('↕ Rotate ' + (avgDY > 0 ? '↓' : '↑'), true);
+        isRotating = true;
+      } else {
+        tZoom = clamp(tZoom + avgDY * 15, 1.5, 18);
+        setLabel('↕ Zoom ' + (avgDY > 0 ? 'Out' : 'In'), true);
+        isRotating = true; // Treats vertical zoom as rotation logic exclusivity
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // TWO-HAND: EXPLODE / IMPLODE
+  // Direct mapping: distance between hands → explode level
+  // Hands spread wide = fully exploded, hands close = fully imploded
+  // ═══════════════════════════════════════════
+  {
+    // Typical range: 0.15 (hands touching) to 0.65 (arms spread wide)
+    const mappedExplode = clamp((currentDist - 0.15) / 0.5, 0, 1);
+    explodeTarget = mappedExplode;
+
+    if (prevTwoHandDist !== null) {
+      const distDelta = currentDist - prevTwoHandDist;
+      if (distDelta > 0.008) {
+        setLabel('🤲 Explode ← →', true);
+      } else if (distDelta < -0.008) {
+        setLabel('🙏 Implode → ←', true);
+      }
+    }
+  }
+
+  // Store for next frame
+  prevTwoHandDist = currentDist;
+  prevTwoHandCenter = currentCenter;
+  prevTwoHandAngle = currentAngle;
+  prevLeftPos = { x: leftCenter.x, y: leftCenter.y };
+  prevRightPos = { x: rightCenter.x, y: rightCenter.y };
+
+  // Clear single-hand state
+  pSpider = null; pZoom = null; lastG = 'twohand';
+}
+
+// ═══════════════════════════════════════════════
+// SINGLE-HAND GESTURE PROCESSING
+// ═══════════════════════════════════════════════
+function handleSingleHand(lm) {
+  const palmCenter = getPalmCenter(lm);
+  const screenPos = {
+    x: (1 - lm[8].x) * innerWidth,
+    y: lm[8].y * innerHeight
+  };
+
+  // Smooth cursor
+  rightPos.x += (screenPos.x - rightPos.x) * 0.3;
+  rightPos.y += (screenPos.y - rightPos.y) * 0.3;
+
+  // Show single dot
+  HDOT_RIGHT.classList.add('on');
+  HDOT_RIGHT.classList.remove('two-hand-active');
+  HDOT_RIGHT.style.left = rightPos.x + 'px';
+  HDOT_RIGHT.style.top = rightPos.y + 'px';
+
+  HDOT_LEFT.classList.remove('on', 'two-hand-active');
+  HAND_LINE.classList.remove('on');
+  CENTER_DOT.classList.remove('on');
+
+  HAND_COUNT.classList.add('on');
+  HAND_COUNT.classList.remove('two');
+  HAND_COUNT.textContent = '● ONE HAND';
+
+  // Clear two-hand state
+  prevTwoHandDist = null;
+  prevTwoHandCenter = null;
+  prevTwoHandAngle = null;
+  prevLeftPos = null;
+  prevRightPos = null;
+
+  const straightCount = countStraightFingers(lm);
+  const pinchDist = d2(lm[4], lm[8]);
+  const spider = isSpiderHand(lm);
+  
+  // ROBUSTNESS: Only update hover target if NOT actively pinching. 
+  // This freezes the cursor/highlight so it doesn't slip off when you pinch!
+  if (pinchDist >= 0.07) {
+    updatePickTarget(rightPos.x, rightPos.y);
+  }
+
+  // ══════════════════════════════════════════
+  // 1. PINCH → PICK / RESET
+  // ══════════════════════════════════════════
+  if (pinchDist < 0.07 && !spider) {
+    HDOT_RIGHT.classList.add('pinch');
+    HDOT_RIGHT.classList.remove('spider');
+    if (!pOn) {
+      pOn = true;
+      const picked = tryPickSelectedPart(rightPos.x, rightPos.y);
+      if (!picked) {
+        tRX = 0; tRY = 0; tZoom = 7;
+        explodeTarget = 0; autoRot = true;
+        resetAllPartTransforms();
+      }
+    }
+    pSpider = null; pZoom = null; pPan = null;
+    lastG = 'pinch';
+    return;
+  } else {
+    HDOT_RIGHT.classList.remove('pinch');
+    pOn = false;
+  }
+
+  // ══════════════════════════════════════════
+  // 2. SPIDER HAND → HOVER (No rotation)
+  // ══════════════════════════════════════════
+  if (spider) {
+    HDOT_RIGHT.classList.add('spider');
+    HDOT_RIGHT.classList.remove('pinch');
+    pSpider = null;
+    return;
+  } else if (pinchDist >= 0.07) {
+    // If not spider and not pinching, clear hover to avoid accidental sticky hovers
+    hoveredPart = null;
+    setBoxTarget(hoverBox, null, false);
+  }
+
+  HDOT_RIGHT.classList.remove('spider');
+  pSpider = null;
+
+  // ══════════════════════════════════════════
+  // 3. TWO FINGERS → ZOOM
+  // ══════════════════════════════════════════
+  if (straightCount === 2) {
+    const indexUp = isFingerStraight(lm, 8, 6);
+    const middleUp = isFingerStraight(lm, 12, 10);
+
+    if (indexUp && middleUp) {
+      if (lastG !== 'zoom') pZoom = null;
+      lastG = 'zoom';
+
+      const d = d2(lm[8], lm[12]);
+      if (pZoom !== null) {
+        const dv = d - pZoom;
+        if (Math.abs(dv) > .003) {
+          if (selectedPart) {
+            selectedPart.selectedScale = clamp(selectedPart.selectedScale + dv * 4.5, 0.35, 3.5);
+            selectedScale = selectedPart.selectedScale;
+            setLabel(dv > 0 ? 'Part Zoom In' : 'Part Zoom Out');
+          } else {
+            tZoom = clamp(tZoom - dv * 22, 1.5, 18);
+            setLabel(dv > 0 ? '✌️ Zoom In' : '✌️ Zoom Out');
+          }
+        }
+      }
+      pZoom = d;
+      return;
+    }
+  }
+  pZoom = null;
+
+  if (selectedPart) {
+    const panPoint = { x: lm[9].x, y: lm[9].y };
+    if (lastG !== 'part-pan') pPan = null;
+    if (pPan !== null) {
+      const dx = panPoint.x - pPan.x;
+      const dy = panPoint.y - pPan.y;
+      if (Math.abs(dx) > .001 || Math.abs(dy) > .001) {
+        selectedPart.selectedOffset.x -= dx * 9;
+        selectedPart.selectedOffset.y -= dy * 9;
+        autoRot = false;
+        setLabel('Part Pan');
+      }
+    }
+    pPan = panPoint;
+    lastG = 'part-pan';
+    return;
+  }
+
+  pPan = null;
+  lastG = '';
+}
+
+// ─────────────────────────────────────────────
+// CUSTOM GESTURE TRAINING LOGIC
+// ─────────────────────────────────────────────
+let appMode = 'presentation'; // 'presentation' or 'training'
+let customGestures = {
+  "explode": {
+    "type": "dynamic",
+    "startPose": [
+      {
+        "x": -0.093887065613043,
+        "y": 0.7002885011151403,
+        "z": 0.13192611323501197
+      },
+      {
+        "x": 0.15963498009604427,
+        "y": 0.5133326599248108,
+        "z": 0.082391591081903
+      },
+      {
+        "x": 0.37911967947005504,
+        "y": 0.24520896284583732,
+        "z": 0.020018878686427932
+      },
+      {
+        "x": 0.5649409424492153,
+        "y": 0.10421725867567365,
+        "z": -0.052710231907941
+      },
+      {
+        "x": 0.7450869189098956,
+        "y": 0.0318869177516495,
+        "z": -0.12618914272260992
+      },
+      {
+        "x": 0.1923145346563338,
+        "y": -0.27539910908306386,
+        "z": 0.05685204976402398
+      },
+      {
+        "x": 0.3031822073579682,
+        "y": -0.6255138301194375,
+        "z": -0.05917712355285833
+      },
+      {
+        "x": 0.4544119010562889,
+        "y": -0.6731029618827405,
+        "z": -0.1456835265223319
+      },
+      {
+        "x": 0.5963620080493616,
+        "y": -0.6326057061319013,
+        "z": -0.19854338383064093
+      },
+      {
+        "x": 0.07289702027548359,
+        "y": -0.27135360823298893,
+        "z": 0.004179678238570681
+      },
+      {
+        "x": 0.09777956173160755,
+        "y": -0.7152254301460472,
+        "z": -0.09507307668021436
+      },
+      {
+        "x": 0.26874656091766547,
+        "y": -0.8631417634829592,
+        "z": -0.16086667644660863
+      },
+      {
+        "x": 0.43663800385106644,
+        "y": -0.8996372900191255,
+        "z": -0.20191739295055464
+      },
+      {
+        "x": -0.039966943877549656,
+        "y": -0.16672241361416915,
+        "z": -0.06133276771174725
+      },
+      {
+        "x": -0.07044724597054591,
+        "y": -0.6526951446268286,
+        "z": -0.16873941883540644
+      },
+      {
+        "x": 0.07903898646892248,
+        "y": -0.8281288105478753,
+        "z": -0.22853473933464918
+      },
+      {
+        "x": 0.24904671175475,
+        "y": -0.9101744946071956,
+        "z": -0.2613378235475847
+      },
+      {
+        "x": -0.13135754544122558,
+        "y": 0.013186629815080795,
+        "z": -0.13162507352585937
+      },
+      {
+        "x": -0.17648305277017978,
+        "y": -0.27431418227921645,
+        "z": -0.24034385291784593
+      },
+      {
+        "x": -0.08874313626063837,
+        "y": -0.4225645737688988,
+        "z": -0.2868305002250414
+      },
+      {
+        "x": 0.034167398179166586,
+        "y": -0.5089323257278495,
+        "z": -0.3093240304636307
+      }
+    ],
+    "motionDelta": { "x": -0.15542096197605137, "y": -0.014856529235839855 }
+  },
+  "implode": {
+    "type": "dynamic",
+    "startPose": [
+      {
+        "x": 0.0912993942244973,
+        "y": 0.7247034850076789,
+        "z": 0.09339619972818765
+      },
+      {
+        "x": -0.16656030708851097,
+        "y": 0.55488165270593,
+        "z": 0.05236101306058741
+      },
+      {
+        "x": -0.36443761397305935,
+        "y": 0.2992420773275469,
+        "z": -0.004696012196577723
+      },
+      {
+        "x": -0.5090221498782099,
+        "y": 0.14702548765343354,
+        "z": -0.07618125663665559
+      },
+      {
+        "x": -0.6416901449945128,
+        "y": 0.005683403714659754,
+        "z": -0.14925920990680255
+      },
+      {
+        "x": -0.22920659832856285,
+        "y": -0.2506794715696871,
+        "z": 0.07237547498430631
+      },
+      {
+        "x": -0.4429922646450095,
+        "y": -0.4326573198708723,
+        "z": -0.07159044532499607
+      },
+      {
+        "x": -0.5889742337701791,
+        "y": -0.2779262404855785,
+        "z": -0.21427985547484754
+      },
+      {
+        "x": -0.677099415867069,
+        "y": -0.09296470060043124,
+        "z": -0.29672679952810266
+      },
+      {
+        "x": -0.0988752878777025,
+        "y": -0.28734439786059507,
+        "z": 0.018539030374851852
+      },
+      {
+        "x": -0.2319565366759946,
+        "y": -0.6493493251590112,
+        "z": -0.05519475119048786
+      },
+      {
+        "x": -0.38273182466230865,
+        "y": -0.7883890562766924,
+        "z": -0.1382038262137308
+      },
+      {
+        "x": -0.5204020966553671,
+        "y": -0.8539213416917848,
+        "z": -0.19947689666102908
+      },
+      {
+        "x": 0.049390384671628894,
+        "y": -0.1948450844835732,
+        "z": -0.053414660955319354
+      },
+      {
+        "x": -0.00005298124128066741,
+        "y": -0.578841677337734,
+        "z": -0.12227659221462625
+      },
+      {
+        "x": -0.13590451318365632,
+        "y": -0.7405478431001102,
+        "z": -0.178490417705482
+      },
+      {
+        "x": -0.27572455202291907,
+        "y": -0.847384516142576,
+        "z": -0.21990127113720892
+      },
+      {
+        "x": 0.18739210731013917,
+        "y": 0.00816546890617646,
+        "z": -0.13089604413202643
+      },
+      {
+        "x": 0.17361359377772367,
+        "y": -0.23113066508691157,
+        "z": -0.19160695711871617
+      },
+      {
+        "x": 0.08689516959931799,
+        "y": -0.3646539893624496,
+        "z": -0.20491089118236008
+      },
+      {
+        "x": -0.023263003421515445,
+        "y": -0.4648578348465061,
+        "z": -0.21071967500451055
+      }
+    ],
+    "motionDelta": { "x": -0.13625676631927486, "y": 0.037892502546310436 }
+  },
+  "rotate": {
+    "type": "dynamic",
+    "startPose": [
+      {
+        "x": 0.05951757738673862,
+        "y": 0.631566940303025,
+        "z": 0.10779643600756517
+      },
+      {
+        "x": -0.1749520608723534,
+        "y": 0.44209092291152524,
+        "z": 0.07283082983718839
+      },
+      {
+        "x": -0.33886625061855874,
+        "y": 0.20471582480132053,
+        "z": 0.0147797298653854
+      },
+      {
+        "x": -0.47493466862781236,
+        "y": 0.07381465538881499,
+        "z": -0.057726099671845325
+      },
+      {
+        "x": -0.5905882956939034,
+        "y": -0.041893971352049544,
+        "z": -0.13597163963714948
+      },
+      {
+        "x": -0.1742796266860758,
+        "y": -0.2650449486259373,
+        "z": 0.07711449736238779
+      },
+      {
+        "x": -0.3784322004010758,
+        "y": -0.4132986126020749,
+        "z": -0.08330150718383512
+      },
+      {
+        "x": -0.5242641295809114,
+        "y": -0.28983114481532596,
+        "z": -0.23793561929655838
+      },
+      {
+        "x": -0.626608224042079,
+        "y": -0.11612157129548972,
+        "z": -0.32436865280835636
+      },
+      {
+        "x": -0.06301547896428127,
+        "y": -0.27592030834556375,
+        "z": 0.017227543350233996
+      },
+      {
+        "x": -0.12633429182392164,
+        "y": -0.6373595138239834,
+        "z": -0.07300382624790043
+      },
+      {
+        "x": -0.2430544850213107,
+        "y": -0.8236307798479348,
+        "z": -0.16635825544841326
+      },
+      {
+        "x": -0.3672565774393109,
+        "y": -0.9301196731214557,
+        "z": -0.22898845488882588
+      },
+      {
+        "x": 0.05061462649847958,
+        "y": -0.1552753150349158,
+        "z": -0.06059595792252487
+      },
+      {
+        "x": 0.05549268952610023,
+        "y": -0.5023281214846653,
+        "z": -0.14525643014028972
+      },
+      {
+        "x": -0.04157260222764792,
+        "y": -0.6897248402174991,
+        "z": -0.21531447655910005
+      },
+      {
+        "x": -0.15443232355329767,
+        "y": -0.8237864503055093,
+        "z": -0.2595438837477935
+      },
+      {
+        "x": 0.12716290176513959,
+        "y": 0.0646736317033912,
+        "z": -0.14154251879766214
+      },
+      {
+        "x": 0.1436826274015464,
+        "y": -0.12906942759386306,
+        "z": -0.21008122349399513
+      },
+      {
+        "x": 0.09250611023273003,
+        "y": -0.2741958839135288,
+        "z": -0.2271314870709408
+      },
+      {
+        "x": 0.018948417988740394,
+        "y": -0.40683585929846944,
+        "z": -0.23270236623145346
+      }
+    ],
+    "motionDelta": { "x": 0.045199882984161444, "y": 0.035682243108749345 }
+  },
+  "zoomIn": {
+    "type": "dynamic",
+    "startPose": [
+      {
+        "x": -0.05269288501067748,
+        "y": 0.6633344165897138,
+        "z": 0.1287367995892538
+      },
+      {
+        "x": 0.18117699125540226,
+        "y": 0.48261940410516146,
+        "z": 0.08662055483469477
+      },
+      {
+        "x": 0.3756863163996749,
+        "y": 0.2475631599308017,
+        "z": 0.024413772552274646
+      },
+      {
+        "x": 0.5444677807826283,
+        "y": 0.11593976639315652,
+        "z": -0.05005209563480473
+      },
+      {
+        "x": 0.6945837769481206,
+        "y": 0.02026257761613885,
+        "z": -0.12278219303104966
+      },
+      {
+        "x": 0.1815903829499612,
+        "y": -0.23705136605253874,
+        "z": 0.06351269757719895
+      },
+      {
+        "x": 0.3625728251271568,
+        "y": -0.44186958383829833,
+        "z": -0.0786928218903369
+      },
+      {
+        "x": 0.5040750554492004,
+        "y": -0.3220773441505644,
+        "z": -0.1885690441358598
+      },
+      {
+        "x": 0.6015861051966411,
+        "y": -0.16093971104262156,
+        "z": -0.24342036483683224
+      },
+      {
+        "x": 0.06468064183375818,
+        "y": -0.2612800545053241,
+        "z": 0.007836871006309832
+      },
+      {
+        "x": 0.12013977782434465,
+        "y": -0.6328619675966611,
+        "z": -0.0826851812926307
+      },
+      {
+        "x": 0.2509717240283564,
+        "y": -0.8114277046609837,
+        "z": -0.1540265942953062
+      },
+      {
+        "x": 0.378999874693507,
+        "y": -0.9253967230233235,
+        "z": -0.20141397636737052
+      },
+      {
+        "x": -0.05005713650840972,
+        "y": -0.17048124911557808,
+        "z": -0.06289702786631546
+      },
+      {
+        "x": -0.07992192581095597,
+        "y": -0.5674378631864331,
+        "z": -0.1581925094445477
+      },
+      {
+        "x": 0.018168153391126752,
+        "y": -0.7694310034908238,
+        "z": -0.22363224905546247
+      },
+      {
+        "x": 0.14460357150992678,
+        "y": -0.9140526445745779,
+        "z": -0.26286131893104603
+      },
+      {
+        "x": -0.14352100326463216,
+        "y": 0.005478253083727883,
+        "z": -0.13718934030644717
+      },
+      {
+        "x": -0.22778544921236063,
+        "y": -0.2331380986806846,
+        "z": -0.21703620209612912
+      },
+      {
+        "x": -0.17504056398366918,
+        "y": -0.3768313652158032,
+        "z": -0.24272606655915058
+      },
+      {
+        "x": -0.07540372926197413,
+        "y": -0.4781526857642827,
+        "z": -0.2538351903548814
+      }
+    ],
+    "motionDelta": { "x": -0.10280908644199371, "y": -0.04419971704483028 }
+  },
+  "zoomOut": {
+    "type": "dynamic",
+    "startPose": [
+      {
+        "x": 0.024432309172546542,
+        "y": 0.7271325686195333,
+        "z": 0.3562205367876603
+      },
+      {
+        "x": 0.4035135140515678,
+        "y": 0.7602443566464022,
+        "z": 0.014643002819845733
+      },
+      {
+        "x": 0.7631326163289036,
+        "y": 0.5750217435979993,
+        "z": -0.20121068756248345
+      },
+      {
+        "x": 0.9363420803849731,
+        "y": 0.3393813167364871,
+        "z": -0.3875265198813366
+      },
+      {
+        "x": 0.9043977598480768,
+        "y": 0.11596254900264247,
+        "z": -0.5632389730392867
+      },
+      {
+        "x": 0.4785342620481198,
+        "y": -0.15727910044863774,
+        "z": -0.1365808260794601
+      },
+      {
+        "x": 0.5124329313648391,
+        "y": -0.44213801353696475,
+        "z": -0.4784122551985609
+      },
+      {
+        "x": 0.48965138526221286,
+        "y": -0.08393968228768534,
+        "z": -0.6682626260993395
+      },
+      {
+        "x": 0.4606662683252714,
+        "y": 0.33008573932645957,
+        "z": -0.7364269078718516
+      },
+      {
+        "x": 0.1330951107595026,
+        "y": -0.24821601696020087,
+        "z": -0.08381656348922006
+      },
+      {
+        "x": 0.1352160152903944,
+        "y": -0.49707869924178616,
+        "z": -0.4082283272210908
+      },
+      {
+        "x": 0.1237132587322074,
+        "y": -0.12717477933595384,
+        "z": -0.5198158698780694
+      },
+      {
+        "x": 0.10989622893970971,
+        "y": 0.2959575826822733,
+        "z": -0.5339536298976488
+      },
+      {
+        "x": -0.18315262158232656,
+        "y": -0.2235234959712591,
+        "z": -0.0663967798095532
+      },
+      {
+        "x": -0.2523858726757369,
+        "y": -0.11305791764688254,
+        "z": -0.3865166179172331
+      },
+      {
+        "x": -0.3064371569787811,
+        "y": 0.3405339582410426,
+        "z": -0.450136735159402
+      },
+      {
+        "x": -0.340133625090131,
+        "y": 0.7313059257911997,
+        "z": -0.4213562641381913
+      },
+      {
+        "x": -0.4529090603978429,
+        "y": -0.09811395523943564,
+        "z": -0.069426367409427
+      },
+      {
+        "x": -0.582350086238751,
+        "y": 0.07315898276396124,
+        "z": -0.2976506076665913
+      },
+      {
+        "x": -0.5996666006210577,
+        "y": 0.479388459620694,
+        "z": -0.32643107868780197
+      },
+      {
+        "x": -0.5775784847831794,
+        "y": 0.8163351602837933,
+        "z": -0.2971456961153518
+      }
+    ],
+    "motionDelta": { "x": 0.5039902061223984, "y": -0.20254858732223513 }
+  },
+  "click": {
+    "type": "dynamic",
+    "startPose": [
+      {
+        "x": -0.02553777859134123,
+        "y": 0.7393846731320448,
+        "z": 0.09397393600365768
+      },
+      {
+        "x": 0.25989652987884154,
+        "y": 0.6206197567291691,
+        "z": -0.017294368320824195
+      },
+      {
+        "x": 0.48777219253597326,
+        "y": 0.39363318786197665,
+        "z": -0.06806808150501929
+      },
+      {
+        "x": 0.6368437813077863,
+        "y": 0.199990684326697,
+        "z": -0.11911427755015727
+      },
+      {
+        "x": 0.7487531769149789,
+        "y": 0.06731000467013959,
+        "z": -0.16961550787340948
+      },
+      {
+        "x": 0.2729300823955916,
+        "y": -0.22972421470461507,
+        "z": 0.003323939875444239
+      },
+      {
+        "x": 0.38477615391511316,
+        "y": -0.5511584636744015,
+        "z": -0.09059379431022006
+      },
+      {
+        "x": 0.4750936088957639,
+        "y": -0.733821907686405,
+        "z": -0.16071422081217276
+      },
+      {
+        "x": 0.5692655735607346,
+        "y": -0.822153700203659,
+        "z": -0.20213250063944893
+      },
+      {
+        "x": 0.07708205201798299,
+        "y": -0.2706608774800086,
+        "z": -0.004214914444328948
+      },
+      {
+        "x": 0.006184049475982054,
+        "y": -0.6563464596902325,
+        "z": -0.09277371865359355
+      },
+      {
+        "x": 0.06102054615381082,
+        "y": -0.8043511752458499,
+        "z": -0.14817973880314633
+      },
+      {
+        "x": 0.15558740140276692,
+        "y": -0.7935373089947589,
+        "z": -0.17651854631717812
+      },
+      {
+        "x": -0.08966246365643676,
+        "y": -0.19555418301177657,
+        "z": -0.028738894303746938
+      },
+      {
+        "x": -0.1990923869115933,
+        "y": -0.540121783164518,
+        "z": -0.13092213040255862
+      },
+      {
+        "x": -0.1420503633914356,
+        "y": -0.6489343948942112,
+        "z": -0.18251329216958237
+      },
+      {
+        "x": -0.03037971139428205,
+        "y": -0.6117157606949275,
+        "z": -0.1994075982830236
+      },
+      {
+        "x": -0.23481189216579695,
+        "y": -0.043445397935645336,
+        "z": -0.064344067131026
+      },
+      {
+        "x": -0.36258613497979836,
+        "y": -0.29209273795945667,
+        "z": -0.16689060551698415
+      },
+      {
+        "x": -0.3446050439611034,
+        "y": -0.3927819705294458,
+        "z": -0.21139708998783213
+      },
+      {
+        "x": -0.2651588795594937,
+        "y": -0.3860615542313711,
+        "z": -0.22265995253601556
+      }
+    ],
+    "motionDelta": { "x": 0.007588297128677368, "y": 0.06662567257881158 }
+  }
+}
+;
+
+const ACTIONS = [
+  { id: 'explode', name: 'Explode', type: 'dynamic', desc: 'Separate the 3D model into its components.' },
+  { id: 'implode', name: 'Implode', type: 'dynamic', desc: 'Reassemble the 3D model.' },
+  { id: 'rotate', name: 'Rotate', type: 'dynamic', desc: 'Rotate the 3D model using hand movement.' },
+  { id: 'zoomIn', name: 'Zoom In', type: 'dynamic', desc: 'Increase the model size.' },
+  { id: 'zoomOut', name: 'Zoom Out', type: 'dynamic', desc: 'Decrease the model size.' },
+  { id: 'click', name: 'Pick / Click', type: 'static', desc: 'Select an object or click a button (Hold a pose).' }
+];
+
+function renderActionList() {
+  const container = document.getElementById('action-list');
+  container.innerHTML = '';
+  ACTIONS.forEach(act => {
+    const isDone = !!customGestures[act.id];
+    container.innerHTML += `
+      <div class="action-item">
+        <div class="action-info">
+          <div class="action-name">${act.name} <span style="font-size:8px;opacity:.5;background:rgba(255,255,255,.1);padding:2px 4px;border-radius:3px;">${act.type.toUpperCase()}</span></div>
+          <div class="action-desc">${act.desc}</div>
+        </div>
+        <button class="train-btn ${isDone ? 'done' : ''}" onclick="openCapture('${act.id}')">
+          ${isDone ? 'RE-TRAIN' : 'TRAIN'}
+        </button>
+      </div>
+    `;
+  });
+}
+
+function startTrainingMode() {
+  appMode = 'training';
+  renderActionList();
+  document.getElementById('training-ui').classList.add('show');
+  startGesture(); // Ensure camera is running
+}
+
+function finishTraining() {
+  document.getElementById('training-ui').classList.remove('show');
+  appMode = 'presentation';
+  console.log("Training finished. Gestures are held in memory.");
+}
+
+function exportGestures() {
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(customGestures));
+  const downloadAnchor = document.createElement('a');
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", "custom_gestures.json");
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+}
+
+function importGestures(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      customGestures = JSON.parse(e.target.result);
+      renderActionList();
+      alert("Gestures imported successfully!");
+    } catch(err) {
+      alert("Invalid gesture file.");
+    }
+  };
+  reader.readAsText(file);
+}
+
+let activeTrainId = null;
+let captureState = 'idle'; // idle, capturing_static, capturing_dynamic
+let dynamicFrames = [];
+let captureTimeout;
+
+function openCapture(actionId) {
+  activeTrainId = actionId;
+  const act = ACTIONS.find(a => a.id === actionId);
+  document.getElementById('capture-msg').textContent = `Train: ${act.name}`;
+  document.getElementById('capture-submsg').textContent = act.type === 'static' ? 'Hold the pose and click capture.' : 'Click capture, then perform the motion for 3 seconds.';
+  document.getElementById('capture-btn').style.display = 'block';
+  document.getElementById('capture-btn').textContent = 'CAPTURE NOW';
+  document.getElementById('capture-overlay').classList.add('show');
+}
+
+let countdownInterval;
+
+function cancelCapture() {
+  document.getElementById('capture-overlay').classList.remove('show');
+  captureState = 'idle';
+  activeTrainId = null;
+  if(countdownInterval) clearInterval(countdownInterval);
+  if(captureTimeout) clearTimeout(captureTimeout);
+}
+
+function normalizeLandmarks(lm) {
+  // Translate so palm center is (0,0,0) and scale by bounding box or arbitrary factor
+  const cx = (lm[0].x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 5;
+  const cy = (lm[0].y + lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 5;
+  const cz = (lm[0].z + lm[5].z + lm[9].z + lm[13].z + lm[17].z) / 5;
+  
+  let maxD = 0.001;
+  for(let p of lm) {
+    const d = Math.hypot(p.x-cx, p.y-cy);
+    if(d > maxD) maxD = d;
+  }
+  
+  return lm.map(p => ({
+    x: (p.x - cx) / maxD,
+    y: (p.y - cy) / maxD,
+    z: (p.z - cz) / maxD
+  }));
+}
+
+function startCapture() {
+  const act = ACTIONS.find(a => a.id === activeTrainId);
+  if(!act) return;
+  
+  document.getElementById('capture-btn').style.display = 'none';
+  captureState = 'countdown';
+  let timeLeft = 3;
+  document.getElementById('capture-submsg').textContent = `Starting in ${timeLeft}...`;
+  
+  countdownInterval = setInterval(() => {
+    timeLeft--;
+    if (timeLeft > 0) {
+      document.getElementById('capture-submsg').textContent = `Starting in ${timeLeft}...`;
+    } else {
+      clearInterval(countdownInterval);
+      document.getElementById('capture-submsg').textContent = 'CAPTURING...';
+      
+      if (act.type === 'static') {
+        captureState = 'capturing_static';
+      } else {
+        captureState = 'capturing_dynamic';
+        dynamicFrames = [];
+        captureTimeout = setTimeout(() => {
+          finishDynamicCapture();
+        }, 3000); // 3 seconds of motion
+      }
+    }
+  }, 1000);
+}
+
+function finishDynamicCapture() {
+  captureState = 'idle';
+  if(dynamicFrames.length < 5) {
+    document.getElementById('capture-submsg').textContent = 'Error: Not enough movement data. Try again.';
+    document.getElementById('capture-btn').style.display = 'block';
+    return;
+  }
+  
+  // Extract simple motion heuristic (Start frame vs End frame palm center)
+  // For web, full DTW is heavy. We can store normalized start and end palm centers.
+  const startLm = dynamicFrames[0];
+  const endLm = dynamicFrames[dynamicFrames.length-1];
+  
+  const startPalm = getPalmCenter(startLm);
+  const endPalm = getPalmCenter(endLm);
+  
+  customGestures[activeTrainId] = {
+    type: 'dynamic',
+    startPose: normalizeLandmarks(startLm),
+    motionDelta: { x: endPalm.x - startPalm.x, y: endPalm.y - startPalm.y }
+  };
+  
+  document.getElementById('capture-submsg').textContent = 'Motion Captured!';
+  setTimeout(cancelCapture, 1000);
+  renderActionList();
+}
+
+function processTrainingFrame(hands, image) {
+  // Draw preview
+  const canvas = document.getElementById('preview-canvas');
+  if (canvas && image && document.getElementById('capture-overlay').classList.contains('show')) {
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Mirror the image
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    
+    // Draw landmarks
+    hands.forEach(hand => {
+      ctx.fillStyle = 'rgba(100, 200, 255, 0.8)';
+      hand.forEach(point => {
+        ctx.beginPath();
+        ctx.arc(point.x * canvas.width, point.y * canvas.height, 4, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+      // Simple connections (just for visual hint)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 2;
+      const drawLine = (i, j) => {
+        ctx.beginPath();
+        ctx.moveTo(hand[i].x * canvas.width, hand[i].y * canvas.height);
+        ctx.lineTo(hand[j].x * canvas.width, hand[j].y * canvas.height);
+        ctx.stroke();
+      };
+      // Palm
+      [0,1,2,3,4].forEach((v,i,a) => { if(i>0) drawLine(a[i-1], a[i]); });
+      [0,5,6,7,8].forEach((v,i,a) => { if(i>0) drawLine(a[i-1], a[i]); });
+      [5,9,10,11,12].forEach((v,i,a) => { if(i>0) drawLine(a[i-1], a[i]); });
+      [9,13,14,15,16].forEach((v,i,a) => { if(i>0) drawLine(a[i-1], a[i]); });
+      [13,17,18,19,20].forEach((v,i,a) => { if(i>0) drawLine(a[i-1], a[i]); });
+      drawLine(0, 17);
+    });
+    ctx.restore();
+  }
+
+  if (captureState === 'idle') return;
+  if (hands.length === 0) return;
+  
+  const act = ACTIONS.find(a => a.id === activeTrainId);
+  
+  if (captureState === 'capturing_static') {
+    customGestures[activeTrainId] = {
+      type: 'static',
+      pose: normalizeLandmarks(hands[0])
+    };
+    captureState = 'idle';
+    document.getElementById('capture-submsg').textContent = 'Pose Captured!';
+    setTimeout(cancelCapture, 1000);
+    renderActionList();
+  } else if (captureState === 'capturing_dynamic') {
+    dynamicFrames.push(hands[0]);
+  }
+}
+
+// Custom Gesture Matching Engine
+function matchCustomStatic(lm, threshold = 0.25) {
+  const norm = normalizeLandmarks(lm);
+  let bestMatch = null;
+  let bestScore = Infinity;
+  
+  for(let id in customGestures) {
+    const g = customGestures[id];
+    if(g.type === 'static') {
+      let dist = 0;
+      for(let i=0; i<21; i++) {
+        dist += Math.hypot(norm[i].x - g.pose[i].x, norm[i].y - g.pose[i].y);
+      }
+      dist /= 21; // average error per landmark
+      if(dist < bestScore && dist < threshold) {
+        bestScore = dist;
+        bestMatch = id;
+      }
+    }
+  }
+  return bestMatch;
+}
+
+// For dynamic, we maintain a history buffer during presentation
+let historyBuffer = [];
+function updateHistoryAndMatchDynamic(lm) {
+  historyBuffer.push({ lm, time: Date.now() });
+  // keep last 3 seconds
+  const now = Date.now();
+  historyBuffer = historyBuffer.filter(f => now - f.time < 3000);
+  
+  if(historyBuffer.length < 5) return null;
+  
+  const startFrame = historyBuffer[0].lm;
+  const endFrame = lm;
+  const startPalm = getPalmCenter(startFrame);
+  const endPalm = getPalmCenter(endFrame);
+  const deltaX = endPalm.x - startPalm.x;
+  const deltaY = endPalm.y - startPalm.y;
+  
+  const normStart = normalizeLandmarks(startFrame);
+  
+  // Find matching dynamic gesture
+  let bestMatch = null;
+  for(let id in customGestures) {
+    const g = customGestures[id];
+    if(g.type === 'dynamic') {
+      // 1. Check if starting pose matches loosely
+      let poseDist = 0;
+      for(let i=0; i<21; i++) {
+        poseDist += Math.hypot(normStart[i].x - g.startPose[i].x, normStart[i].y - g.startPose[i].y);
+      }
+      poseDist /= 21;
+      
+      if(poseDist < 0.35) { // Loose pose match
+        // 2. Check motion vector direction
+        const dotProduct = (deltaX * g.motionDelta.x) + (deltaY * g.motionDelta.y);
+        const magLive = Math.hypot(deltaX, deltaY);
+        const magSaved = Math.hypot(g.motionDelta.x, g.motionDelta.y);
+        
+        // If movement is significant and in similar direction
+        if(magLive > 0.05 && dotProduct > 0 && dotProduct / (magLive * magSaved) > 0.8) {
+           bestMatch = id;
+           // Clear buffer to prevent multi-trigger
+           historyBuffer = [];
+           break;
+        }
+      }
+    }
+  }
+  
+  return bestMatch;
+}
+
+// ═══════════════════════════════════════════════
+// MAIN RESULTS HANDLER
+// ═══════════════════════════════════════════════
+function handleResults(r) {
+  const hands = r.multiHandLandmarks || [];
+  
+  if (appMode === 'training') {
+    processTrainingFrame(hands, r.image);
+    return;
+  }
+  
+  const handCount = hands.length;
+
+  if (handCount === 0) {
+    // No hands detected
+    HDOT_LEFT.classList.remove('on', 'pinch', 'spider', 'two-hand-active');
+    HDOT_RIGHT.classList.remove('on', 'pinch', 'spider', 'two-hand-active');
+    HAND_LINE.classList.remove('on');
+    CENTER_DOT.classList.remove('on');
+    HAND_COUNT.classList.remove('on', 'two');
+
+    // Clear all state
+    pSpider = null; pZoom = null; pPan = null; pOn = false; lastG = '';
+    prevTwoHandDist = null; prevTwoHandCenter = null;
+    prevTwoHandAngle = null;
+    prevLeftPos = null; prevRightPos = null;
+    hoverBox.visible = false;
+    return;
+  }
+
+  if (handCount >= 2 && !selectedPart) {
+    // TWO HANDS DETECTED
+    handleTwoHands(hands[0], hands[1]);
+  } else if (handCount === 1) {
+    // SINGLE HAND
+    handleSingleHand(hands[0]);
+  }
+}
+
+// ─────────────────────────────────────────────
+// MEDIAPIPE BOOTSTRAP
+// ─────────────────────────────────────────────
+const VER = '0.4.1675469240';
+function ldScript(src) {
+  return new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = src; s.crossOrigin = 'anonymous';
+    s.onload = ok; s.onerror = fail;
+    document.head.appendChild(s);
+  });
+}
+let handsInst = null;
+
+async function startGesture() {
+  const btn = document.getElementById('cam-btn');
+  if (btn._busy) return;
+  btn._busy = true;
+  btn.textContent = '📷 Starting…';
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 240, facingMode: 'user' }
+    });
+  } catch (e) {
+    btn.textContent = '⚠ Camera denied';
+    btn._busy = false;
+    return;
+  }
+
+  const vcam = document.getElementById('vcam');
+  vcam.srcObject = stream;
+  try { await vcam.play(); } catch (e) {}
+  btn.textContent = '⏳ Loading AI…';
+
+  let ok = false;
+  try {
+    await ldScript(`https://cdn.jsdelivr.net/npm/@mediapipe/hands@${VER}/hands.js`);
+    ok = true;
+  } catch (e) {}
+  if (!ok) try {
+    await ldScript(`https://unpkg.com/@mediapipe/hands@${VER}/hands.js`);
+    ok = true;
+  } catch (e) {}
+  if (!ok) {
+    btn.textContent = '⚠ Load failed';
+    btn._busy = false;
+    return;
+  }
+
+  try {
+    const HC = window.Hands || window.mpHands?.Hands;
+    handsInst = new HC({
+      locateFile: f => f.startsWith('http') ? f
+        : `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${VER}/${f}`
+    });
+    
+    // ★ IMPORTANT: Set maxNumHands to 2 for two-hand detection
+    handsInst.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: .6,
+      minTrackingConfidence: .5
+    });
+    
+    handsInst.onResults(handleResults);
+    await new Promise(r => setTimeout(r, 700));
+    if (vcam.readyState >= 2) await handsInst.send({ image: vcam });
+  } catch (e) {
+    btn.textContent = '⚠ Error';
+    btn._busy = false;
+    return;
+  }
+
+  gestOK = true;
+  btn.textContent = '✦ Hands Active';
+  btn.classList.add('active');
+
+  // Show gesture guide
+  guideEl.classList.add('show');
+
+  let proc = false, lf = Date.now();
+  async function gloop() {
+    if (!gestOK) return;
+    const now = Date.now();
+    if (proc && now - lf > 1500) proc = false;
+    if (!proc && vcam.readyState >= 2) {
+      proc = true; lf = now;
+      try { await handsInst.send({ image: vcam }); } catch (e) {}
+      proc = false;
+    }
+    setTimeout(() => requestAnimationFrame(gloop), 33);
+  }
+  gloop();
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Mock button so startGesture doesn't crash if it expects to manipulate it
+  const btn = document.getElementById('cam-btn');
+  if (btn) btn.style.display = 'none';
+  
+  // Fake the click
+  startGesture();
+});
+
+</script>
+</body>
+</html>
